@@ -1,0 +1,26 @@
+{
+  "name": "realty-match-miniapp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "vite": "^7.1.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "gh-pages": "^6.3.0",
+    "typescript": "^5.9.2"
+  }
+}
