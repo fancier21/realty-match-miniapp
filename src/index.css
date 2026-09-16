@@ -11,8 +11,9 @@
   --app-surface: var(--tg-theme-secondary-bg-color, #ffffff);
   --app-text: var(--tg-theme-text-color, #14283f);
   --app-muted: var(--tg-theme-hint-color, #718093);
-  --app-accent: var(--tg-theme-button-color, #c78a50);
-  --app-accent-text: var(--tg-theme-button-text-color, #ffffff);
+  /* Keep the REALTY MATCH accent consistent; Telegram's button color is often blue. */
+  --app-accent: #c78a50;
+  --app-accent-text: #ffffff;
   --app-ink: #14283f;
   --app-line: color-mix(in srgb, var(--app-muted) 22%, transparent);
   --app-accent-soft: color-mix(in srgb, var(--app-accent) 13%, transparent);
