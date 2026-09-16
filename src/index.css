@@ -1,19 +1,23 @@
 :root {
   font-family:
-    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
-  color: var(--tg-theme-text-color, #1f2937);
-  background: var(--tg-theme-bg-color, #f4f6f8);
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  color: var(--app-text);
+  background: var(--app-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   color-scheme: light dark;
-  --app-accent: var(--tg-theme-button-color, #2678b9);
+  --app-bg: var(--tg-theme-bg-color, #f4f1eb);
+  --app-surface: var(--tg-theme-secondary-bg-color, #ffffff);
+  --app-text: var(--tg-theme-text-color, #14283f);
+  --app-muted: var(--tg-theme-hint-color, #718093);
+  --app-accent: var(--tg-theme-button-color, #c78a50);
   --app-accent-text: var(--tg-theme-button-text-color, #ffffff);
-  --app-secondary-bg: var(--tg-theme-secondary-bg-color, #ffffff);
-  --app-hint: var(--tg-theme-hint-color, #718096);
-  --app-border: color-mix(in srgb, var(--tg-theme-hint-color, #718096) 24%, transparent);
-  --app-danger: #c0392b;
-  --app-success: #249b65;
+  --app-ink: #14283f;
+  --app-line: color-mix(in srgb, var(--app-muted) 22%, transparent);
+  --app-accent-soft: color-mix(in srgb, var(--app-accent) 13%, transparent);
+  --app-danger: #c75d58;
+  --app-success: #32936e;
 }
 
 * {
@@ -30,7 +34,10 @@ body,
 
 body {
   min-height: 100dvh;
-  background: var(--tg-theme-bg-color, #f4f6f8);
+  background:
+    radial-gradient(circle at 8% 2%, color-mix(in srgb, var(--app-accent) 16%, transparent), transparent 30%),
+    radial-gradient(circle at 96% 90%, color-mix(in srgb, #6c8faa 12%, transparent), transparent 32%),
+    var(--app-bg);
 }
 
 button,
@@ -45,47 +52,71 @@ button {
 button:focus-visible,
 textarea:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--app-accent) 42%, transparent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
 .app-shell {
   display: flex;
   justify-content: center;
   min-height: 100dvh;
-  padding: max(20px, env(safe-area-inset-top)) 16px
-    max(20px, env(safe-area-inset-bottom));
+  padding: max(18px, env(safe-area-inset-top)) 14px
+    max(18px, env(safe-area-inset-bottom));
 }
 
 .app-card {
   display: flex;
   flex-direction: column;
-  width: min(100%, 540px);
-  min-height: min(700px, calc(100dvh - 40px));
-  padding: 24px 20px 18px;
-  border: 1px solid var(--app-border);
-  border-radius: 24px;
-  background: var(--tg-theme-bg-color, #f4f6f8);
-  box-shadow: 0 12px 36px rgb(31 41 55 / 8%);
+  width: min(100%, 580px);
+  min-height: min(720px, calc(100dvh - 36px));
+  padding: 24px 24px 20px;
+  overflow: hidden;
+  border: 1px solid var(--app-line);
+  border-radius: 30px;
+  background: color-mix(in srgb, var(--app-surface) 88%, transparent);
+  box-shadow: 0 24px 70px rgb(20 40 63 / 11%);
+  backdrop-filter: blur(22px);
 }
 
 .app-header {
   display: flex;
   align-items: center;
-  gap: 11px;
-  margin-bottom: 42px;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 72px;
 }
 
-.brand-mark {
+.brand-lockup {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-frame,
+.result-logo {
   display: grid;
-  width: 40px;
-  height: 40px;
+  flex: 0 0 auto;
   place-items: center;
-  border-radius: 12px;
-  color: var(--app-accent-text);
-  background: var(--app-accent);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  overflow: hidden;
+  border: 1px solid rgb(20 40 63 / 8%);
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgb(20 40 63 / 10%);
+}
+
+.logo-frame {
+  width: 62px;
+  height: 54px;
+  border-radius: 16px;
+}
+
+.logo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.brand-copy {
+  min-width: 0;
 }
 
 .eyebrow,
@@ -95,21 +126,54 @@ textarea:focus-visible {
 .context-notice,
 .textarea-footer,
 .form-error,
-.direction-copy small {
+.direction-copy small,
+.result-eyebrow {
   margin: 0;
 }
 
 .eyebrow {
-  color: var(--tg-theme-text-color, #1f2937);
-  font-size: 13px;
+  color: var(--app-text);
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.13em;
+  white-space: nowrap;
 }
 
 .header-caption {
-  margin-top: 2px;
-  color: var(--app-hint);
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--app-muted);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.location-dot,
+.kicker-line {
+  display: inline-block;
+  flex: 0 0 auto;
+  background: var(--app-accent);
+}
+
+.location-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--app-accent-soft);
 }
 
 .intro-section,
@@ -117,78 +181,101 @@ form {
   width: 100%;
 }
 
-.title-icon {
-  display: grid;
-  width: 52px;
-  height: 52px;
-  margin-bottom: 18px;
-  place-items: center;
-  border-radius: 16px;
+.hero-kicker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   color: var(--app-accent);
-  background: color-mix(in srgb, var(--app-accent) 13%, transparent);
-  font-size: 28px;
-  font-weight: 500;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
 }
 
-h1 {
-  margin: 0;
-  color: var(--tg-theme-text-color, #1f2937);
-  font-size: clamp(26px, 7vw, 34px);
-  line-height: 1.12;
-  letter-spacing: -0.04em;
+.kicker-line {
+  width: 24px;
+  height: 2px;
+  border-radius: 2px;
+}
+
+.hero-title {
+  max-width: 500px;
+  margin: 16px 0 0;
+  color: var(--app-text);
+  font-size: clamp(36px, 9vw, 58px);
+  font-weight: 650;
+  line-height: 0.99;
+  letter-spacing: -0.065em;
+}
+
+.hero-title em {
+  color: var(--app-accent);
+  font-style: normal;
+  font-weight: 400;
 }
 
 .section-description {
-  margin-top: 10px;
-  color: var(--app-hint);
-  font-size: 16px;
-  line-height: 1.45;
+  margin-top: 16px;
+  color: var(--app-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.hero-description {
+  max-width: 420px;
 }
 
 .direction-list {
   display: grid;
   gap: 12px;
-  margin-top: 28px;
+  margin-top: 36px;
 }
 
 .direction-button {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 80px;
-  padding: 14px;
-  border: 1px solid var(--app-border);
-  border-radius: 16px;
-  color: var(--tg-theme-text-color, #1f2937);
-  background: var(--app-secondary-bg);
+  min-height: 102px;
+  padding: 16px;
+  border: 1px solid var(--app-line);
+  border-radius: 20px;
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-surface) 76%, transparent);
+  box-shadow: 0 8px 22px rgb(20 40 63 / 4%);
   cursor: pointer;
   text-align: left;
   transition:
-    border-color 140ms ease,
-    transform 140ms ease,
-    background-color 140ms ease;
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    background-color 160ms ease;
 }
 
 .direction-button:hover {
-  border-color: color-mix(in srgb, var(--app-accent) 60%, transparent);
+  border-color: color-mix(in srgb, var(--app-accent) 62%, var(--app-line));
+  background: color-mix(in srgb, var(--app-accent) 7%, var(--app-surface));
+  box-shadow: 0 14px 28px rgb(20 40 63 / 9%);
+  transform: translateY(-2px);
 }
 
 .direction-button:active {
-  transform: scale(0.985);
+  transform: translateY(0) scale(0.985);
 }
 
 .direction-icon {
   display: grid;
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  margin-right: 12px;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  margin-right: 15px;
   place-items: center;
-  border-radius: 13px;
+  border-radius: 17px;
   color: var(--app-accent);
-  background: color-mix(in srgb, var(--app-accent) 13%, transparent);
-  font-size: 23px;
-  font-weight: 700;
+  background: var(--app-accent-soft);
+}
+
+.direction-icon svg {
+  width: 27px;
+  height: 27px;
 }
 
 .direction-copy {
@@ -197,14 +284,22 @@ h1 {
   min-width: 0;
 }
 
+.option-eyebrow {
+  color: var(--app-accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
 .direction-copy strong {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .direction-copy small {
   overflow: hidden;
-  color: var(--app-hint);
+  color: var(--app-muted);
   font-size: 12px;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -212,66 +307,78 @@ h1 {
 
 .direction-arrow {
   margin-left: auto;
-  padding-left: 10px;
-  color: var(--app-hint);
-  font-size: 28px;
-  font-weight: 300;
+  padding-left: 12px;
+  color: var(--app-accent);
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 1;
 }
 
 .back-button {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin: -7px 0 25px;
-  padding: 5px 0;
+  gap: 8px;
+  margin: -8px 0 48px;
+  padding: 6px 0;
   border: 0;
-  color: var(--app-accent);
+  color: var(--app-muted);
   background: transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  transition: color 140ms ease;
+}
+
+.back-button:hover {
+  color: var(--app-accent);
+}
+
+.back-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .back-button span {
-  font-size: 23px;
-  line-height: 0.5;
+  font-size: 20px;
+  line-height: 0.6;
 }
 
 .form-heading {
-  margin-bottom: 24px;
+  margin-bottom: 30px;
 }
 
 .textarea-label {
   display: block;
-  margin-bottom: 8px;
-  color: var(--tg-theme-text-color, #1f2937);
-  font-size: 14px;
-  font-weight: 650;
+  margin-bottom: 9px;
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 textarea {
   display: block;
   width: 100%;
-  min-height: 164px;
-  padding: 14px;
+  min-height: 184px;
+  padding: 17px;
   resize: vertical;
-  border: 1px solid var(--app-border);
-  border-radius: 14px;
-  color: var(--tg-theme-text-color, #1f2937);
-  background: var(--app-secondary-bg);
+  border: 1px solid var(--app-line);
+  border-radius: 18px;
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-surface) 82%, transparent);
   font-size: 16px;
-  line-height: 1.5;
+  line-height: 1.55;
   outline: 0;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
 
 textarea::placeholder {
-  color: var(--app-hint);
-  opacity: 0.9;
+  color: var(--app-muted);
+  opacity: 0.82;
 }
 
 textarea:focus {
   border-color: var(--app-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 16%, transparent);
+  background: var(--app-surface);
+  box-shadow: 0 0 0 4px var(--app-accent-soft);
 }
 
 textarea[aria-invalid="true"] {
@@ -282,9 +389,9 @@ textarea[aria-invalid="true"] {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 7px;
-  color: var(--app-hint);
-  font-size: 12px;
+  margin-top: 8px;
+  color: var(--app-muted);
+  font-size: 11px;
 }
 
 .form-error {
@@ -295,41 +402,47 @@ textarea[aria-invalid="true"] {
 }
 
 .context-notice {
-  margin: -8px 0 20px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  color: var(--app-hint);
-  background: color-mix(in srgb, var(--app-hint) 10%, transparent);
-  font-size: 13px;
+  margin: -10px 0 22px;
+  padding: 11px 13px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  color: var(--app-muted);
+  background: var(--app-accent-soft);
+  font-size: 12px;
   line-height: 1.4;
 }
 
 .primary-button,
 .secondary-button {
   display: inline-flex;
-  min-height: 48px;
+  min-height: 52px;
   align-items: center;
   justify-content: center;
-  border-radius: 13px;
+  gap: 10px;
+  border-radius: 15px;
   cursor: pointer;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 750;
   transition:
-    opacity 140ms ease,
-    transform 140ms ease,
-    background-color 140ms ease;
+    box-shadow 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease,
+    background-color 160ms ease;
 }
 
 .primary-button {
   width: 100%;
-  padding: 12px 18px;
+  padding: 13px 18px;
   border: 0;
   color: var(--app-accent-text);
-  background: var(--app-accent);
+  background: linear-gradient(135deg, var(--app-accent), color-mix(in srgb, var(--app-accent) 72%, #8b5a32));
+  box-shadow: 0 10px 20px color-mix(in srgb, var(--app-accent) 25%, transparent);
 }
 
 .primary-button:hover {
-  opacity: 0.9;
+  box-shadow: 0 14px 26px color-mix(in srgb, var(--app-accent) 34%, transparent);
+  opacity: 0.94;
+  transform: translateY(-1px);
 }
 
 .primary-button:active,
@@ -340,98 +453,173 @@ textarea[aria-invalid="true"] {
 .primary-button:disabled {
   cursor: wait;
   opacity: 0.58;
+  transform: none;
+}
+
+.button-arrow {
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 0.7;
 }
 
 .submit-button {
-  margin-top: 24px;
+  margin-top: 26px;
 }
 
 .secondary-button {
   width: 100%;
-  padding: 11px 18px;
-  border: 1px solid var(--app-border);
-  color: var(--tg-theme-text-color, #1f2937);
-  background: var(--app-secondary-bg);
+  padding: 12px 18px;
+  border: 1px solid var(--app-line);
+  color: var(--app-text);
+  background: transparent;
 }
 
-.result-actions {
-  display: grid;
-  gap: 10px;
-  width: 100%;
-  margin-top: 24px;
+.secondary-button:hover {
+  background: var(--app-accent-soft);
+}
+
+.result-shell {
+  align-items: center;
 }
 
 .result-card {
   align-items: center;
   justify-content: center;
-  min-height: min(560px, calc(100dvh - 40px));
+  min-height: min(620px, calc(100dvh - 36px));
   text-align: center;
 }
 
-.result-card h1 {
-  margin-top: 22px;
-  font-size: clamp(25px, 7vw, 32px);
+.result-logo {
+  width: 104px;
+  height: 84px;
+  margin-bottom: 26px;
+  border-radius: 22px;
 }
 
-.result-card p {
-  max-width: 330px;
-  margin: 12px auto 0;
-  color: var(--app-hint);
-  font-size: 15px;
-  line-height: 1.5;
+.result-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
-.success-icon,
-.error-icon {
+.result-icon {
   display: grid;
-  width: 72px;
-  height: 72px;
+  width: 58px;
+  height: 58px;
   place-items: center;
-  border-radius: 50%;
-  font-size: 38px;
-  font-weight: 700;
+  border-radius: 20px;
+  font-size: 29px;
+  font-weight: 750;
 }
 
 .success-icon {
   color: var(--app-success);
-  background: color-mix(in srgb, var(--app-success) 15%, transparent);
+  background: color-mix(in srgb, var(--app-success) 14%, transparent);
 }
 
 .error-icon {
   color: var(--app-danger);
   background: color-mix(in srgb, var(--app-danger) 14%, transparent);
-  font-size: 32px;
+  font-size: 25px;
+}
+
+.result-eyebrow {
+  margin-top: 22px;
+  color: var(--app-success);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.error-eyebrow {
+  color: var(--app-danger);
+}
+
+.result-card h1 {
+  margin: 10px 0 0;
+  color: var(--app-text);
+  font-size: clamp(27px, 7vw, 38px);
+  font-weight: 650;
+  letter-spacing: -0.05em;
+}
+
+.result-description {
+  max-width: 360px;
+  margin: 12px auto 0;
+  color: var(--app-muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.result-card > .primary-button {
+  max-width: 360px;
+  margin-top: 28px;
+}
+
+.result-actions {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 360px);
+  margin-top: 28px;
 }
 
 .app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   margin-top: auto;
-  padding-top: 34px;
-  color: var(--app-hint);
-  font-size: 11px;
-  line-height: 1.4;
+  padding-top: 42px;
+  color: var(--app-muted);
+  font-size: 10px;
+  letter-spacing: 0.01em;
   text-align: center;
 }
 
-.app-footer span {
+.footer-mark {
   color: var(--app-accent);
-  font-size: 8px;
-  vertical-align: 1px;
+  font-size: 13px;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 440px) {
   .app-shell {
-    padding-right: 10px;
-    padding-left: 10px;
+    padding-right: 9px;
+    padding-left: 9px;
   }
 
   .app-card {
-    min-height: calc(100dvh - 20px);
-    padding: 20px 16px 16px;
-    border-radius: 20px;
+    min-height: calc(100dvh - 18px);
+    padding: 20px 17px 17px;
+    border-radius: 25px;
   }
 
   .app-header {
-    margin-bottom: 32px;
+    margin-bottom: 58px;
+  }
+
+  .location-pill {
+    padding: 7px 8px;
+    font-size: 9px;
+  }
+
+  .hero-title {
+    font-size: clamp(35px, 11vw, 48px);
+  }
+
+  .direction-button {
+    min-height: 96px;
+    padding: 13px;
+  }
+
+  .direction-icon {
+    flex-basis: 47px;
+    width: 47px;
+    height: 47px;
+    margin-right: 12px;
+  }
+
+  .direction-copy small {
+    max-width: 205px;
   }
 }
 

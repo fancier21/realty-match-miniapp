@@ -21,23 +21,46 @@ type Screen = "direction" | "form" | "submitting" | "success" | "error";
 
 const directionOptions: Array<{
   value: DirectionHint;
-  icon: string;
   title: string;
   description: string;
+  eyebrow: string;
 }> = [
   {
     value: "demand",
-    icon: "⌂",
     title: "Ищу недвижимость",
-    description: "Расскажите, что хотите купить или арендовать",
+    description: "Купить или арендовать подходящий объект",
+    eyebrow: "01 / ПОИСК",
   },
   {
     value: "offer",
-    icon: "₾",
     title: "Предлагаю недвижимость",
-    description: "Расскажите об объекте, который продаёте или сдаёте",
+    description: "Продать или сдать свой объект",
+    eyebrow: "02 / ПРЕДЛОЖЕНИЕ",
   },
 ];
+
+function DirectionIcon({ direction }: { direction: DirectionHint }) {
+  if (direction === "demand") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="m4 11 8-6 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6.5 10.5V19h11v-8.5M10 19v-4.5h4V19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="17.5" cy="17.5" r="3.5" fill="currentColor" />
+        <path d="m20 20-1.5-1.5" stroke="var(--app-surface)" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 20V7.5L12 4l7 3.5V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 20v-5h8v5M8 9h1M12 9h1M16 9h1M8 12h1M12 12h1M16 12h1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M3.5 20h17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const logoSrc = `${import.meta.env.BASE_URL}logo.png`;
 
 function countUnicodeCharacters(value: string): number {
   return Array.from(value).length;
@@ -180,17 +203,21 @@ function App({ webApp }: AppProps) {
 
   if (screen === "success") {
     return (
-      <main className="app-shell">
+      <main className="app-shell result-shell">
         <section className="app-card result-card" aria-live="polite">
-          <div className="success-icon" aria-hidden="true">
+          <div className="result-logo">
+            <img src={logoSrc} alt="REALTY MATCH" />
+          </div>
+          <div className="result-icon success-icon" aria-hidden="true">
             ✓
           </div>
-          <h1>Заявка принята!</h1>
-          <p>
-            REALTY MATCH принял вашу заявку и передал её в обработку.
+          <p className="result-eyebrow">ГОТОВО</p>
+          <h1>Заявка принята</h1>
+          <p className="result-description">
+            Мы передали её в обработку. REALTY MATCH скоро займётся поиском подходящего варианта.
           </p>
           <button className="primary-button" type="button" onClick={closeApp}>
-            Закрыть
+            Закрыть <span className="button-arrow" aria-hidden="true">↗</span>
           </button>
         </section>
       </main>
@@ -199,16 +226,20 @@ function App({ webApp }: AppProps) {
 
   if (screen === "error") {
     return (
-      <main className="app-shell">
+      <main className="app-shell result-shell">
         <section className="app-card result-card" aria-live="assertive">
-          <div className="error-icon" aria-hidden="true">
+          <div className="result-logo">
+            <img src={logoSrc} alt="REALTY MATCH" />
+          </div>
+          <div className="result-icon error-icon" aria-hidden="true">
             !
           </div>
-          <h1>Не удалось отправить</h1>
-          <p>{error ?? "Попробуйте ещё раз."}</p>
+          <p className="result-eyebrow error-eyebrow">НУЖНА ПОПЫТКА</p>
+          <h1>Не получилось отправить</h1>
+          <p className="result-description">{error ?? "Попробуйте ещё раз."}</p>
           <div className="result-actions">
             <button className="primary-button" type="button" onClick={() => void submitForm()}>
-              Повторить
+              Повторить <span className="button-arrow" aria-hidden="true">↗</span>
             </button>
             <button className="secondary-button" type="button" onClick={editSubmission}>
               Изменить заявку
@@ -223,22 +254,33 @@ function App({ webApp }: AppProps) {
     <main className="app-shell">
       <section className="app-card">
         <header className="app-header">
-          <div className="brand-mark" aria-hidden="true">
-            RM
+          <div className="brand-lockup">
+            <div className="logo-frame">
+              <img src={logoSrc} alt="REALTY MATCH" />
+            </div>
+            <div className="brand-copy">
+              <p className="eyebrow">REALTY MATCH</p>
+              <p className="header-caption">Недвижимость в Батуми</p>
+            </div>
           </div>
-          <div>
-            <p className="eyebrow">REALTY MATCH</p>
-            <p className="header-caption">Недвижимость в Батуми</p>
+          <div className="location-pill">
+            <span className="location-dot" aria-hidden="true" />
+            BATUMI
           </div>
         </header>
 
         {screen === "direction" ? (
           <section className="intro-section" aria-labelledby="direction-title">
-            <div className="title-icon" aria-hidden="true">
-              ↗
+            <div className="hero-kicker">
+              <span className="kicker-line" aria-hidden="true" /> НОВАЯ ЗАЯВКА
             </div>
-            <h1 id="direction-title">Подать заявку</h1>
-            <p className="section-description">Что вы хотите?</p>
+            <h1 id="direction-title" className="hero-title">
+              Найдём место,<br />
+              <em>которое подходит.</em>
+            </h1>
+            <p className="section-description hero-description">
+              Расскажите, что вам нужно. Система обработает заявку и передаст её в REALTY MATCH.
+            </p>
             <div className="direction-list">
               {directionOptions.map((option) => (
                 <button
@@ -248,14 +290,15 @@ function App({ webApp }: AppProps) {
                   onClick={() => chooseDirection(option.value)}
                 >
                   <span className="direction-icon" aria-hidden="true">
-                    {option.icon}
+                    <DirectionIcon direction={option.value} />
                   </span>
                   <span className="direction-copy">
+                    <span className="option-eyebrow">{option.eyebrow}</span>
                     <strong>{option.title}</strong>
                     <small>{option.description}</small>
                   </span>
                   <span className="direction-arrow" aria-hidden="true">
-                    ›
+                    ↗
                   </span>
                 </button>
               ))}
@@ -263,14 +306,22 @@ function App({ webApp }: AppProps) {
           </section>
         ) : (
           <section aria-labelledby="form-title">
-            <button className="back-button" type="button" onClick={goBackToDirection}>
-              <span aria-hidden="true">‹</span> Назад
+            <button
+              className="back-button"
+              type="button"
+              onClick={goBackToDirection}
+              disabled={screen === "submitting"}
+            >
+              <span aria-hidden="true">←</span> Вернуться
             </button>
             <div className="form-heading">
-              <div className="title-icon" aria-hidden="true">
-                ✎
+              <div className="hero-kicker">
+                <span className="kicker-line" aria-hidden="true" /> ШАГ 01 / ОПИСАНИЕ
               </div>
-              <h1 id="form-title">Ваша заявка</h1>
+              <h1 id="form-title" className="hero-title">
+                Расскажите<br />
+                <em>подробнее.</em>
+              </h1>
               <p className="section-description">
                 {direction === "demand"
                   ? "Опишите, какую недвижимость вы ищете"
@@ -286,7 +337,7 @@ function App({ webApp }: AppProps) {
 
             <form onSubmit={handleSubmit} noValidate>
               <label className="textarea-label" htmlFor="application-text">
-                Описание заявки
+                Ваше описание
               </label>
               <textarea
                 id="application-text"
@@ -295,8 +346,8 @@ function App({ webApp }: AppProps) {
                 onChange={handleTextChange}
                 placeholder={
                   direction === "demand"
-                    ? "Например: Ищу 1+1 в Батуми до $800 в месяц..."
-                    : "Например: Сдаю светлую квартиру 1+1 в центре Батуми..."
+                    ? "Ищу 1+1 в Батуми до $800 в месяц..."
+                    : "Сдаю светлую квартиру 1+1 в центре Батуми..."
                 }
                 rows={7}
                 aria-describedby="text-help text-count"
@@ -322,13 +373,15 @@ function App({ webApp }: AppProps) {
                 disabled={screen === "submitting"}
               >
                 {screen === "submitting" ? "Отправляем…" : "Отправить заявку"}
+                <span className="button-arrow" aria-hidden="true">↗</span>
               </button>
             </form>
           </section>
         )}
 
         <footer className="app-footer">
-          <span aria-hidden="true">●</span> Ваши данные обрабатываются через Telegram
+          <span className="footer-mark" aria-hidden="true">✦</span>
+          <span>Заявка обрабатывается через Telegram</span>
         </footer>
       </section>
     </main>
