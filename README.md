@@ -50,21 +50,18 @@ npm run deploy
 
 Перед публикацией:
 
-1. В GitHub включите Pages для ветки `gh-pages` и директории `/ (root)`.
-2. В DNS создайте `CNAME` для `app.realtymatch`, указывающий на GitHub Pages.
-3. В настройках Pages укажите custom domain `app.realtymatch`.
-4. Для production-сборки задайте URL backend:
+1. В настройках GitHub репозитория включите Pages для ветки `gh-pages` (источник: `Deploy from a branch`, ветка `gh-pages`, папка `/ (root)`).
+2. URL приложения: `https://fancier21.github.io/realty-match-miniapp/` (путь `/realty-match-miniapp/` задан в `vite.config.ts` как `base`).
+3. Для production-сборки укажите публичный HTTPS URL вашего backend API:
 
    ```bash
-   VITE_API_BASE_URL=https://api.realtymatch npm run build
+   VITE_API_BASE_URL=https://api.yourdomain.com npm run build
    npm run deploy
    ```
 
-   Либо сохраните значение в `.env.production` перед сборкой. Не помещайте в переменные `VITE_*` секреты: они попадают в клиентский bundle.
+   Либо сохраните значение `VITE_API_BASE_URL` в файле `.env.production` перед сборкой. Не помещайте в переменные `VITE_*` секреты: они попадают в клиентский bundle.
 
-`public/CNAME` содержит custom domain и будет включён в опубликованную сборку.
-
-Backend должен разрешить CORS для `https://app.realtymatch` и обработать preflight-запросы для `Content-Type` и `Idempotency-Key`. Cookies frontend не использует: Telegram `initData` передаётся в JSON и валидируется только на backend.
+Backend должен разрешить CORS для `https://fancier21.github.io` (по стандарту RFC 6454 заголовок `Origin` браузера не содержит path) и обработать preflight-запросы для `Content-Type` и `Idempotency-Key`. Cookies frontend не использует: Telegram `initData` передаётся в JSON и валидируется только на backend.
 
 ## Telegram
 

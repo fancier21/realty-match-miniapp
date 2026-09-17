@@ -1,5 +1,20 @@
 export interface TelegramInitDataUnsafe {
   start_param?: string;
+  user?: {
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+    language_code?: string;
+  };
+}
+
+export interface TelegramBackButton {
+  isVisible: boolean;
+  show: () => void;
+  hide: () => void;
+  onClick: (callback: () => void) => void;
+  offClick: (callback: () => void) => void;
 }
 
 export interface TelegramWebApp {
@@ -8,6 +23,9 @@ export interface TelegramWebApp {
   ready: () => void;
   expand?: () => void;
   close?: () => void;
+  enableClosingConfirmation?: () => void;
+  disableClosingConfirmation?: () => void;
+  BackButton?: TelegramBackButton;
 }
 
 declare global {
@@ -39,14 +57,39 @@ export function initializeTelegramWebApp(): TelegramWebApp | null {
 }
 
 /**
- * This value is read from initDataUnsafe only as launch context for the UI.
+ * This value is read from initDataUnsafe or URL parameters only as launch context for the UI.
  * Authentication must always use webApp.initData, which is signed by Telegram.
  */
 export function getStartParam(webApp: TelegramWebApp | null): string | null {
   const startParam = webApp?.initDataUnsafe?.start_param;
-  return typeof startParam === "string" && startParam.length > 0
-    ? startParam
-    : null;
+  if (typeof startParam === "string" && startParam.length > 0) {
+    return startParam;
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromQuery = urlParams.get("tgWebAppStartParam") || urlParams.get("startapp");
+      if (fromQuery && fromQuery.length > 0) {
+        return fromQuery;
+      }
+
+      const hash = window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash;
+      if (hash) {
+        const hashParams = new URLSearchParams(hash);
+        const fromHash = hashParams.get("tgWebAppStartParam") || hashParams.get("startapp");
+        if (fromHash && fromHash.length > 0) {
+          return fromHash;
+        }
+      }
+    } catch {
+      // Silently ignore URL parsing issues
+    }
+  }
+
+  return null;
 }
 
 export function createIdempotencyKey(): string {
@@ -62,3 +105,4 @@ export function createIdempotencyKey(): string {
 
   return `miniapp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+

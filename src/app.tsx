@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   getUserFacingApiError,
   submitPublishRequest,
@@ -78,7 +78,7 @@ function getValidationError(text: string): string | null {
   }
 
   if (contentLength < MIN_TEXT_LENGTH) {
-    return "Опишите заявку подробнее.";
+    return "Опишите заявку подробнее (минимум 10 символов).";
   }
 
   if (countUnicodeCharacters(text) > MAX_TEXT_LENGTH) {
@@ -96,6 +96,41 @@ function App({ webApp }: AppProps) {
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
 
   const startParam = getStartParam(webApp);
+
+  // Telegram Native BackButton support
+  useEffect(() => {
+    const backButton = webApp?.BackButton;
+    if (!backButton) {
+      return;
+    }
+
+    if (screen === "form") {
+      backButton.show();
+      const onBack = () => {
+        goBackToDirection();
+      };
+      backButton.onClick(onBack);
+      return () => {
+        backButton.offClick(onBack);
+        backButton.hide();
+      };
+    } else {
+      backButton.hide();
+    }
+  }, [screen, webApp]);
+
+  // Prevent accidental close when text is entered
+  useEffect(() => {
+    if (!webApp?.enableClosingConfirmation) {
+      return;
+    }
+
+    if (text.trim().length > 0 && screen === "form") {
+      webApp.enableClosingConfirmation();
+    } else {
+      webApp.disableClosingConfirmation?.();
+    }
+  }, [text, screen, webApp]);
 
   function chooseDirection(nextDirection: DirectionHint) {
     setDirection(nextDirection);
@@ -132,6 +167,14 @@ function App({ webApp }: AppProps) {
     setScreen("form");
   }
 
+  function retrySubmission() {
+    // If the error was an idempotency conflict, assign a fresh key for retry
+    if (error && error.includes("другим текстом")) {
+      setIdempotencyKey(createIdempotencyKey());
+    }
+    void submitForm();
+  }
+
   async function submitForm() {
     if (!direction) {
       setScreen("direction");
@@ -151,7 +194,8 @@ function App({ webApp }: AppProps) {
       return;
     }
 
-    if (startParam !== "publish") {
+    const effectiveStartParam = startParam ?? "publish";
+    if (effectiveStartParam !== "publish") {
       setError("Откройте приложение через кнопку «Подать заявку».");
       setScreen("error");
       return;
@@ -161,22 +205,17 @@ function App({ webApp }: AppProps) {
     setScreen("submitting");
 
     try {
-      const result = await submitPublishRequest(
+      await submitPublishRequest(
         {
           init_data: webApp.initData,
           direction_hint: direction,
           text,
-          start_param: startParam,
+          start_param: effectiveStartParam,
         },
         idempotencyKey,
       );
 
-      if (result.status === "failed" || result.status === "ignored") {
-        setError("Не удалось обработать заявку. Попробуйте изменить текст и отправить ещё раз.");
-        setScreen("error");
-        return;
-      }
-
+      webApp?.disableClosingConfirmation?.();
       setScreen("success");
     } catch (requestError) {
       setError(getUserFacingApiError(requestError));
@@ -190,6 +229,7 @@ function App({ webApp }: AppProps) {
   }
 
   function closeApp() {
+    webApp?.disableClosingConfirmation?.();
     if (webApp?.close) {
       webApp.close();
       return;
@@ -238,7 +278,7 @@ function App({ webApp }: AppProps) {
           <h1>Не получилось отправить</h1>
           <p className="result-description">{error ?? "Попробуйте ещё раз."}</p>
           <div className="result-actions">
-            <button className="primary-button" type="button" onClick={() => void submitForm()}>
+            <button className="primary-button" type="button" onClick={retrySubmission}>
               Повторить <span className="button-arrow" aria-hidden="true">↗</span>
             </button>
             <button className="secondary-button" type="button" onClick={editSubmission}>
@@ -249,6 +289,7 @@ function App({ webApp }: AppProps) {
       </main>
     );
   }
+
 
   return (
     <main className="app-shell">
@@ -352,6 +393,7 @@ function App({ webApp }: AppProps) {
                 rows={7}
                 aria-describedby="text-help text-count"
                 aria-invalid={Boolean(error)}
+                readOnly={screen === "submitting"}
                 autoFocus
               />
               <div className="textarea-footer">
