@@ -1,4 +1,10 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import {
   getUserFacingApiError,
   submitPublishRequest,
@@ -6,7 +12,10 @@ import {
 } from "./api";
 import {
   createIdempotencyKey,
+  getInitData,
   getStartParam,
+  getTelegramColorScheme,
+  getTelegramWebApp,
   type TelegramWebApp,
 } from "./telegram";
 
@@ -19,48 +28,8 @@ interface AppProps {
 
 type Screen = "direction" | "form" | "submitting" | "success" | "error";
 
-const directionOptions: Array<{
-  value: DirectionHint;
-  title: string;
-  description: string;
-  eyebrow: string;
-}> = [
-  {
-    value: "demand",
-    title: "Ищу недвижимость",
-    description: "Купить или арендовать подходящий объект",
-    eyebrow: "01 / ПОИСК",
-  },
-  {
-    value: "offer",
-    title: "Предлагаю недвижимость",
-    description: "Продать или сдать свой объект",
-    eyebrow: "02 / ПРЕДЛОЖЕНИЕ",
-  },
-];
-
-function DirectionIcon({ direction }: { direction: DirectionHint }) {
-  if (direction === "demand") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="m4 11 8-6 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M6.5 10.5V19h11v-8.5M10 19v-4.5h4V19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="17.5" cy="17.5" r="3.5" fill="currentColor" />
-        <path d="m20 20-1.5-1.5" stroke="var(--app-surface)" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 20V7.5L12 4l7 3.5V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8 20v-5h8v5M8 9h1M12 9h1M16 9h1M8 12h1M12 12h1M16 12h1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M3.5 20h17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-const logoSrc = `${import.meta.env.BASE_URL}logo.png`;
+const batumiCardSrc = `${import.meta.env.BASE_URL}batumi-eu-square.jpeg`;
+const batumiSkylineSrc = `${import.meta.env.BASE_URL}batumi-skyline.png`;
 
 function countUnicodeCharacters(value: string): number {
   return Array.from(value).length;
@@ -68,6 +37,32 @@ function countUnicodeCharacters(value: string): number {
 
 function limitUnicodeCharacters(value: string, maxLength: number): string {
   return Array.from(value).slice(0, maxLength).join("");
+}
+
+function countTags(value: string): number {
+  const hashtags = value.match(/#[\p{L}\p{N}_]+/gu);
+  let count = hashtags ? hashtags.length : 0;
+  const keywords = [
+    "1+1",
+    "2+1",
+    "3+1",
+    "студия",
+    "батуми",
+    "бульвар",
+    "море",
+    "аренда",
+    "сдам",
+    "сниму",
+    "купить",
+    "продам",
+  ];
+  const lower = value.toLowerCase();
+  for (const kw of keywords) {
+    if (lower.includes(kw)) {
+      count++;
+    }
+  }
+  return Math.min(count, 100);
 }
 
 function getValidationError(text: string): string | null {
@@ -88,18 +83,101 @@ function getValidationError(text: string): string | null {
   return null;
 }
 
-function App({ webApp }: AppProps) {
+function App({ webApp: initialWebApp }: AppProps) {
   const [screen, setScreen] = useState<Screen>("direction");
   const [direction, setDirection] = useState<DirectionHint | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  const startParam = getStartParam(webApp);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const submitButtonRef = useRef<HTMLButtonElement | null>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null);
+  const formScreenRef = useRef<HTMLElement | null>(null);
 
-  // Telegram Native BackButton support
+  const activeWebApp = getTelegramWebApp() ?? initialWebApp;
+  const initData = getInitData(activeWebApp);
+  const isInsideTelegram = initData.length > 0;
+  const startParam = getStartParam(activeWebApp);
+
+  const [theme, setTheme] = useState<"light" | "dark">(() =>
+    getTelegramColorScheme(activeWebApp),
+  );
+
+  // Sync theme with Telegram WebApp and system preference
   useEffect(() => {
-    const backButton = webApp?.BackButton;
+    const updateTheme = () => {
+      const activeTheme = getTelegramColorScheme(activeWebApp);
+      setTheme(activeTheme);
+      document.documentElement.dataset.theme = activeTheme;
+      if (activeTheme === "dark") {
+        document.documentElement.classList.add("theme-dark");
+        document.documentElement.classList.remove("theme-light");
+        try {
+          activeWebApp?.setHeaderColor?.("#0F131C");
+          activeWebApp?.setBackgroundColor?.("#0F131C");
+        } catch {
+          // Ignore if Telegram API throws in unsupported client
+        }
+      } else {
+        document.documentElement.classList.add("theme-light");
+        document.documentElement.classList.remove("theme-dark");
+        try {
+          activeWebApp?.setHeaderColor?.("#f8f6f2");
+          activeWebApp?.setBackgroundColor?.("#f8f6f2");
+        } catch {
+          // Ignore if Telegram API throws in unsupported client
+        }
+      }
+    };
+
+    updateTheme();
+
+    if (activeWebApp?.onEvent) {
+      activeWebApp.onEvent("themeChanged", updateTheme);
+    }
+
+    const mediaQuery = typeof window !== "undefined" ? window.matchMedia?.("(prefers-color-scheme: dark)") : null;
+    const handleMediaChange = () => {
+      if (!activeWebApp?.colorScheme) {
+        updateTheme();
+      }
+    };
+    mediaQuery?.addEventListener?.("change", handleMediaChange);
+
+    return () => {
+      activeWebApp?.offEvent?.("themeChanged", updateTheme);
+      mediaQuery?.removeEventListener?.("change", handleMediaChange);
+    };
+  }, [activeWebApp]);
+
+  // Smoothly scroll the page so the submit button is positioned nicely above the keyboard with bottom margin
+  const scrollToSubmitButton = (immediate = false) => {
+    const doScroll = () => {
+      const target = bottomAnchorRef.current ?? submitButtonRef.current;
+      if (target) {
+        target.scrollIntoView({
+          behavior: immediate ? "auto" : "smooth",
+          block: "nearest",
+        });
+      }
+    };
+
+    if (immediate) {
+      doScroll();
+    } else {
+      // Execute with staggered delays to follow the iOS keyboard animation
+      setTimeout(doScroll, 80);
+      setTimeout(doScroll, 200);
+      setTimeout(doScroll, 350);
+    }
+  };
+
+  // Telegram Native BackButton integration
+  useEffect(() => {
+    const backButton = activeWebApp?.BackButton;
     if (!backButton) {
       return;
     }
@@ -117,26 +195,97 @@ function App({ webApp }: AppProps) {
     } else {
       backButton.hide();
     }
-  }, [screen, webApp]);
+  }, [screen, activeWebApp]);
 
-  // Prevent accidental close when text is entered
+  // Telegram Closing Confirmation
   useEffect(() => {
-    if (!webApp?.enableClosingConfirmation) {
+    if (!activeWebApp?.enableClosingConfirmation) {
       return;
     }
 
     if (text.trim().length > 0 && screen === "form") {
-      webApp.enableClosingConfirmation();
+      activeWebApp.enableClosingConfirmation();
     } else {
-      webApp.disableClosingConfirmation?.();
+      activeWebApp.disableClosingConfirmation?.();
     }
-  }, [text, screen, webApp]);
+  }, [text, screen, activeWebApp]);
+
+  // Handle focus and viewport adjustments when entering the form screen
+  useEffect(() => {
+    if (screen === "form") {
+      activeWebApp?.expand?.();
+
+      // On iOS and mobile browsers, activate focus and lift form above keyboard
+      const timer = setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus({ preventScroll: true });
+          setIsKeyboardOpen(true);
+          scrollToSubmitButton();
+        }
+      }, 70);
+
+      return () => clearTimeout(timer);
+    } else {
+      setIsKeyboardOpen(false);
+      setKeyboardHeight(0);
+    }
+  }, [screen, activeWebApp]);
+
+  // Track window.visualViewport changes (essential for iOS Safari and Chrome mobile)
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) {
+      return;
+    }
+
+    const vv = window.visualViewport;
+    const handleViewportChange = () => {
+      if (screen !== "form") {
+        return;
+      }
+
+      const diff = Math.max(0, window.innerHeight - vv.height);
+      const isKb = diff > 80;
+      setIsKeyboardOpen(isKb);
+      setKeyboardHeight(isKb ? diff : 0);
+
+      if (isKb) {
+        scrollToSubmitButton();
+      }
+    };
+
+    vv.addEventListener("resize", handleViewportChange);
+    vv.addEventListener("scroll", handleViewportChange);
+    return () => {
+      vv.removeEventListener("resize", handleViewportChange);
+      vv.removeEventListener("scroll", handleViewportChange);
+    };
+  }, [screen]);
+
+  // Telegram native viewportChanged event listener
+  useEffect(() => {
+    if (!activeWebApp?.onEvent) {
+      return;
+    }
+
+    const handleTgViewport = () => {
+      if (screen === "form") {
+        scrollToSubmitButton();
+      }
+    };
+
+    activeWebApp.onEvent("viewportChanged", handleTgViewport);
+    return () => {
+      activeWebApp.offEvent?.("viewportChanged", handleTgViewport);
+    };
+  }, [screen, activeWebApp]);
 
   function chooseDirection(nextDirection: DirectionHint) {
+    activeWebApp?.expand?.();
     setDirection(nextDirection);
     setScreen("form");
     setError(null);
     setIdempotencyKey(createIdempotencyKey());
+    setIsKeyboardOpen(true);
   }
 
   function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
@@ -146,8 +295,6 @@ function App({ webApp }: AppProps) {
       setError(null);
     }
 
-    // A changed payload is a new submission. Retries without edits keep the
-    // same key so the backend can safely return the original result.
     if (nextText !== text) {
       setIdempotencyKey(createIdempotencyKey());
     }
@@ -168,7 +315,6 @@ function App({ webApp }: AppProps) {
   }
 
   function retrySubmission() {
-    // If the error was an idempotency conflict, assign a fresh key for retry
     if (error && error.includes("другим текстом")) {
       setIdempotencyKey(createIdempotencyKey());
     }
@@ -188,7 +334,8 @@ function App({ webApp }: AppProps) {
       return;
     }
 
-    if (!webApp?.initData) {
+    const currentInitData = getInitData(activeWebApp);
+    if (!currentInitData) {
       setError("Откройте приложение через Telegram и попробуйте ещё раз.");
       setScreen("error");
       return;
@@ -207,7 +354,7 @@ function App({ webApp }: AppProps) {
     try {
       await submitPublishRequest(
         {
-          init_data: webApp.initData,
+          init_data: currentInitData,
           direction_hint: direction,
           text,
           start_param: effectiveStartParam,
@@ -215,7 +362,7 @@ function App({ webApp }: AppProps) {
         idempotencyKey,
       );
 
-      webApp?.disableClosingConfirmation?.();
+      activeWebApp?.disableClosingConfirmation?.();
       setScreen("success");
     } catch (requestError) {
       setError(getUserFacingApiError(requestError));
@@ -229,9 +376,9 @@ function App({ webApp }: AppProps) {
   }
 
   function closeApp() {
-    webApp?.disableClosingConfirmation?.();
-    if (webApp?.close) {
-      webApp.close();
+    activeWebApp?.disableClosingConfirmation?.();
+    if (activeWebApp?.close) {
+      activeWebApp.close();
       return;
     }
 
@@ -241,47 +388,93 @@ function App({ webApp }: AppProps) {
     setError(null);
   }
 
+  // =========================================================
+  // Screen 3: Success Confirmation
+  // =========================================================
   if (screen === "success") {
     return (
-      <main className="app-shell result-shell">
-        <section className="app-card result-card" aria-live="polite">
-          <div className="result-logo">
-            <img src={logoSrc} alt="REALTY MATCH" />
+      <main id="main-content" className="app-shell" tabIndex={-1}>
+        <section className="success-screen" aria-live="polite" aria-labelledby="success-heading-title">
+          <div className="success-badge-circle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+              <path
+                d="M5 13l4 4L19 7"
+                strokeWidth="2.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </div>
-          <div className="result-icon success-icon" aria-hidden="true">
-            ✓
+
+          <h1 id="success-heading-title" className="success-title">Заявка принята!</h1>
+
+          <div className="success-description-block">
+            <p>
+              {direction === "offer"
+                ? "Мы сохранили параметры объекта и подключаем поиск клиентов."
+                : "Мы сохранили ваши критерии и уже ведём подбор."}
+            </p>
+            <p>
+              Мы пришлём уведомление, как только появятся первые совпадения.
+            </p>
           </div>
-          <p className="result-eyebrow">ГОТОВО</p>
-          <h1>Заявка принята</h1>
-          <p className="result-description">
-            Мы передали её в обработку. REALTY MATCH скоро займётся поиском подходящего варианта.
-          </p>
-          <button className="primary-button" type="button" onClick={closeApp}>
-            Закрыть <span className="button-arrow" aria-hidden="true">↗</span>
+
+          <div className="batumi-skyline-wrapper">
+            <img
+              src={batumiSkylineSrc}
+              alt="Панорама города Батуми"
+              className="batumi-skyline-img"
+            />
+            <div className="location-city-capsule" aria-hidden="true">
+              <span>📍 Батуми →</span>
+            </div>
+          </div>
+
+          <button
+            className="pill-cta-btn"
+            type="button"
+            onClick={closeApp}
+            aria-label="Закрыть приложение"
+          >
+            Закрыть
           </button>
         </section>
       </main>
     );
   }
 
+  // =========================================================
+  // Screen 4: Error State
+  // =========================================================
   if (screen === "error") {
     return (
-      <main className="app-shell result-shell">
-        <section className="app-card result-card" aria-live="assertive">
-          <div className="result-logo">
-            <img src={logoSrc} alt="REALTY MATCH" />
-          </div>
-          <div className="result-icon error-icon" aria-hidden="true">
+      <main id="main-content" className="app-shell" tabIndex={-1}>
+        <section className="error-screen" role="alert" aria-live="assertive" aria-labelledby="error-heading-title">
+          <div className="error-badge-circle" aria-hidden="true">
             !
           </div>
-          <p className="result-eyebrow error-eyebrow">НУЖНА ПОПЫТКА</p>
-          <h1>Не получилось отправить</h1>
-          <p className="result-description">{error ?? "Попробуйте ещё раз."}</p>
-          <div className="result-actions">
-            <button className="primary-button" type="button" onClick={retrySubmission}>
-              Повторить <span className="button-arrow" aria-hidden="true">↗</span>
+
+          <h1 id="error-heading-title" className="error-title">Не получилось отправить</h1>
+
+          <p className="error-description">
+            {error ?? "Попробуйте ещё раз."}
+          </p>
+
+          <div className="error-actions-group">
+            <button
+              className="pill-cta-btn"
+              type="button"
+              onClick={retrySubmission}
+              aria-label="Повторить отправку заявки"
+            >
+              Повторить <span className="btn-arrow" aria-hidden="true">→</span>
             </button>
-            <button className="secondary-button" type="button" onClick={editSubmission}>
+            <button
+              className="secondary-pill-btn"
+              type="button"
+              onClick={editSubmission}
+              aria-label="Вернуться к редактированию заявки"
+            >
               Изменить заявку
             </button>
           </div>
@@ -290,142 +483,333 @@ function App({ webApp }: AppProps) {
     );
   }
 
-
+  // =========================================================
+  // Screens 1 & 2
+  // =========================================================
   return (
-    <main className="app-shell">
-      <section className="app-card">
-        <header className="app-header">
-          <div className="brand-lockup">
-            <div className="logo-frame">
-              <img src={logoSrc} alt="REALTY MATCH" />
-            </div>
-            <div className="brand-copy">
-              <p className="eyebrow">REALTY MATCH</p>
-              <p className="header-caption">Недвижимость в Батуми</p>
-            </div>
-          </div>
-          <div className="location-pill">
-            <span className="location-dot" aria-hidden="true" />
-            BATUMI
-          </div>
-        </header>
+    <main id="main-content" className="app-shell" tabIndex={-1}>
+      <a href="#main-content" className="skip-link">
+        Перейти к основному содержимому
+      </a>
 
-        {screen === "direction" ? (
-          <section className="intro-section" aria-labelledby="direction-title">
-            <div className="hero-kicker">
-              <span className="kicker-line" aria-hidden="true" /> НОВАЯ ЗАЯВКА
-            </div>
-            <h1 id="direction-title" className="hero-title">
-              Найдём место,<br />
-              <em>которое подходит.</em>
-            </h1>
-            <p className="section-description hero-description">
-              Расскажите, что вам нужно. Система обработает заявку и передаст её в REALTY MATCH.
-            </p>
-            <div className="direction-list">
-              {directionOptions.map((option) => (
-                <button
-                  className="direction-button"
-                  key={option.value}
-                  type="button"
-                  onClick={() => chooseDirection(option.value)}
-                >
-                  <span className="direction-icon" aria-hidden="true">
-                    <DirectionIcon direction={option.value} />
-                  </span>
-                  <span className="direction-copy">
-                    <span className="option-eyebrow">{option.eyebrow}</span>
-                    <strong>{option.title}</strong>
-                    <small>{option.description}</small>
-                  </span>
-                  <span className="direction-arrow" aria-hidden="true">
-                    ↗
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : (
-          <section aria-labelledby="form-title">
+      {/* Top Header */}
+      <header className="app-header" role="banner">
+        <div className="brand-header-left">
+          {screen === "form" && (
             <button
-              className="back-button"
+              className="header-back-btn"
               type="button"
               onClick={goBackToDirection}
-              disabled={screen === "submitting"}
+              aria-label="Назад к выбору роли"
             >
-              <span aria-hidden="true">←</span> Вернуться
+              <span aria-hidden="true">←</span>
             </button>
-            <div className="form-heading">
-              <div className="hero-kicker">
-                <span className="kicker-line" aria-hidden="true" /> ШАГ 01 / ОПИСАНИЕ
+          )}
+          <div className="brand-logo-text" aria-label="REALTY MATCH">
+            <span>REALTY</span>
+            <span>MATCH</span>
+          </div>
+        </div>
+
+        <button
+          className="location-selector-pill"
+          type="button"
+          aria-label="Текущий регион: Батуми, Грузия"
+        >
+          <span>Батуми</span>
+        </button>
+      </header>
+
+      {/* Screen 1: Welcome & Role Selection */}
+      {screen === "direction" ? (
+        <section className="welcome-screen" aria-labelledby="welcome-hero-title">
+          {/* Card Deck: Fan of multiple cards (top card slightly askew) */}
+          <div
+            className="card-deck-container"
+            role="region"
+            aria-label="Галерея недвижимости Батуми"
+          >
+            <div className="card-deck-fan">
+              {/* Card 1: Bottom layer (rotated left) */}
+              <div className="card-layer card-layer-1" aria-hidden="true">
+                <img
+                  src={batumiCardSrc}
+                  alt=""
+                  loading="eager"
+                />
+                <div className="card-layer-overlay" />
               </div>
-              <h1 id="form-title" className="hero-title">
-                Расскажите<br />
-                <em>подробнее.</em>
-              </h1>
-              <p className="section-description">
-                {direction === "demand"
-                  ? "Опишите, какую недвижимость вы ищете"
-                  : "Опишите недвижимость, которую предлагаете"}
-              </p>
+
+              {/* Card 2: Middle layer (rotated slightly left) */}
+              <div className="card-layer card-layer-2" aria-hidden="true">
+                <img
+                  src={batumiCardSrc}
+                  alt=""
+                  loading="eager"
+                />
+                <div className="card-layer-overlay" />
+              </div>
+
+              {/* Card 3: Top layer (already slightly askew with interactive heart) */}
+              <div className="card-layer card-layer-top">
+                <img
+                  src={batumiCardSrc}
+                  alt="Недвижимость Батуми у моря"
+                  loading="eager"
+                />
+                <button
+                  className="card-floating-heart"
+                  type="button"
+                  aria-label="Сохранить в избранное"
+                >
+                  <span aria-hidden="true">❤️</span>
+                </button>
+              </div>
             </div>
+          </div>
 
-            {!webApp && (
-              <p className="context-notice" role="status">
-                Для отправки откройте приложение внутри Telegram.
-              </p>
-            )}
+          {/* Typography */}
+          <h1 id="welcome-hero-title" className="hero-title">
+            Найдите свою <br />
+            недвижимость
+          </h1>
 
-            <form onSubmit={handleSubmit} noValidate>
-              <label className="textarea-label" htmlFor="application-text">
-                Ваше описание
+          <p className="hero-subtitle">
+            Уютные квартиры, стильные апартаменты,<br />
+            дома у моря и многое другое.
+          </p>
+
+          {/* Actions: Roles */}
+          <div className="role-actions-row">
+            <button
+              className="role-action-item"
+              type="button"
+              onClick={() => chooseDirection("demand")}
+              aria-label="Ищу недвижимость, перейти к созданию заявки"
+            >
+              <div className="role-circle-btn" aria-hidden="true">
+                <svg
+                  width="26"
+                  height="26"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  focusable="false"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              </div>
+              <span className="role-action-label">
+                <span>Ищу</span>
+                <span>недвижимость</span>
+              </span>
+            </button>
+
+            <button
+              className="role-action-item"
+              type="button"
+              onClick={() => chooseDirection("offer")}
+              aria-label="Предлагаю недвижимость, перейти к публикации объекта"
+            >
+              <div className="role-circle-btn" aria-hidden="true">
+                <svg
+                  width="26"
+                  height="26"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  focusable="false"
+                >
+                  <path d="M3 10.5 12 3l9 7.5" />
+                  <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+                  <path d="M9 21v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" />
+                </svg>
+              </div>
+              <span className="role-action-label">
+                <span>Предлагаю</span>
+                <span>недвижимость</span>
+              </span>
+            </button>
+          </div>
+        </section>
+      ) : (
+        /* Screen 2: Request Form */
+        <section
+          ref={formScreenRef}
+          className={`form-screen ${isKeyboardOpen ? "keyboard-open" : ""}`}
+          style={{
+            ["--keyboard-height" as string]: `${keyboardHeight}px`,
+          }}
+          aria-labelledby="form-heading-title"
+        >
+          <div className="form-header-block">
+            <div className="form-role-icon" aria-hidden="true">
+              {direction === "demand" ? (
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  focusable="false"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              ) : (
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  focusable="false"
+                >
+                  <path d="M3 10.5 12 3l9 7.5" />
+                  <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+                  <path d="M9 21v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" />
+                </svg>
+              )}
+            </div>
+            <h1 id="form-heading-title" className="form-title">
+              {direction === "demand" ? "Ищу недвижимость" : "Предлагаю недвижимость"}
+            </h1>
+            <p className="form-subtitle">
+              {direction === "demand"
+                ? "Расскажите, что именно вы ищете и в каких параметрах."
+                : "Расскажите, что именно вы предлагаете и в каких параметрах."}
+            </p>
+          </div>
+
+          {!isInsideTelegram && (
+            <div className="context-notice-badge" role="status">
+              Для отправки откройте приложение внутри Telegram.
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} noValidate aria-label="Форма создания заявки">
+            <div className="smart-textarea-card">
+              <label htmlFor="application-text" className="visually-hidden">
+                {direction === "demand"
+                  ? "Опишите параметры поиска недвижимости"
+                  : "Опишите параметры предлагаемой недвижимости"}
               </label>
+
               <textarea
+                ref={textareaRef}
                 id="application-text"
                 name="text"
                 value={text}
                 onChange={handleTextChange}
+                onFocus={() => {
+                  setIsKeyboardOpen(true);
+                  scrollToSubmitButton();
+                }}
+                onBlur={() => {
+                  setTimeout(() => {
+                    if (
+                      document.activeElement !== textareaRef.current &&
+                      document.activeElement !== submitButtonRef.current
+                    ) {
+                      setIsKeyboardOpen(false);
+                      setKeyboardHeight(0);
+                    }
+                  }, 200);
+                }}
                 placeholder={
                   direction === "demand"
-                    ? "Ищу 1+1 в Батуми до $800 в месяц..."
-                    : "Сдаю светлую квартиру 1+1 в центре Батуми..."
+                    ? "Например:\nИщу квартиру 1+1 в Батуми,\nс октября (посуточно)."
+                    : "Например:\nСдаю квартиру 1+1 в Батуми,\nсветлая, с балконом (посуточно)."
                 }
-                rows={7}
-                aria-describedby="text-help text-count"
+                rows={isKeyboardOpen ? 4 : 5}
+                aria-required="true"
                 aria-invalid={Boolean(error)}
+                aria-describedby={error ? "form-error-msg text-counters" : "text-counters"}
                 readOnly={screen === "submitting"}
-                autoFocus
               />
-              <div className="textarea-footer">
-                <span id="text-help">Минимум {MIN_TEXT_LENGTH} символов</span>
-                <span id="text-count">
+
+              <div
+                id="text-counters"
+                className="textarea-counters-row"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span id="text-count" aria-label={`Символов: ${countUnicodeCharacters(text)} из ${MAX_TEXT_LENGTH}`}>
                   {countUnicodeCharacters(text)} / {MAX_TEXT_LENGTH}
                 </span>
+                <span id="text-tags" aria-label={`Распознано ключевых параметров: ${countTags(text)} из 100`}>
+                  {countTags(text)} / 100
+                </span>
               </div>
+            </div>
 
-              {error && (
-                <p className="form-error" role="alert">
-                  {error}
-                </p>
+            {error && (
+              <p id="form-error-msg" className="form-error-text" role="alert" aria-live="assertive">
+                {error}
+              </p>
+            )}
+
+            <button
+              ref={submitButtonRef}
+              className="pill-cta-btn"
+              type="submit"
+              disabled={screen === "submitting"}
+              aria-busy={screen === "submitting"}
+              aria-label={screen === "submitting" ? "Отправляем заявку..." : "Продолжить"}
+              onPointerDown={(e) => {
+                if (screen !== "submitting") {
+                  e.preventDefault();
+                  void submitForm();
+                }
+              }}
+            >
+              {screen === "submitting" ? (
+                "Отправляем…"
+              ) : (
+                <>
+                  Продолжить <span className="btn-arrow" aria-hidden="true">→</span>
+                </>
               )}
+            </button>
 
-              <button
-                className="primary-button submit-button"
-                type="submit"
-                disabled={screen === "submitting"}
+            {/* Spacer anchor to ensure breathing room between the button and keyboard */}
+            <div
+              ref={bottomAnchorRef}
+              className="keyboard-scroll-anchor"
+              aria-hidden="true"
+            />
+
+            <div className="privacy-shield-badge">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                focusable="false"
               >
-                {screen === "submitting" ? "Отправляем…" : "Отправить заявку"}
-                <span className="button-arrow" aria-hidden="true">↗</span>
-              </button>
-            </form>
-          </section>
-        )}
-
-        <footer className="app-footer">
-          <span className="footer-mark" aria-hidden="true">✦</span>
-          <span>Заявка обрабатывается через Telegram</span>
-        </footer>
-      </section>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+              <span>Ваша заявка будет обработана в приватном режиме</span>
+            </div>
+          </form>
+        </section>
+      )}
     </main>
   );
 }

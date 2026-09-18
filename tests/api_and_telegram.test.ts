@@ -7,6 +7,7 @@ import {
 } from "../src/api.ts";
 import {
   createIdempotencyKey,
+  getInitData,
   getStartParam,
 } from "../src/telegram.ts";
 
@@ -44,6 +45,18 @@ test("getStartParam extracts start parameter correctly", () => {
   assert.equal(getStartParam(mockWebApp), "publish");
   assert.equal(getStartParam({ initData: "", initDataUnsafe: {}, ready: () => {} }), null);
   assert.equal(getStartParam(null), null);
+});
+
+test("getInitData extracts initData correctly", () => {
+  const mockWebApp = {
+    initData: "query_id=123&user=%7B%7D",
+    initDataUnsafe: {},
+    ready: () => {},
+  };
+  assert.equal(getInitData(mockWebApp), "query_id=123&user=%7B%7D");
+  assert.equal(getInitData({ initData: "  trimmed_data  ", initDataUnsafe: {}, ready: () => {} }), "trimmed_data");
+  assert.equal(getInitData({ initData: "", initDataUnsafe: {}, ready: () => {} }), "");
+  assert.equal(getInitData(null), "");
 });
 
 test("submitPublishRequest returns success on queued 200 response", async () => {
