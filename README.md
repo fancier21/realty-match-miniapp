@@ -6,7 +6,7 @@ Frontend MVP для подачи заявок в REALTY MATCH через Telegra
 
 ## Требования
 
-- Node.js 20 или новее;
+- Node.js 22.12 или новее (тесты используют встроенную поддержку TypeScript Node.js);
 - npm;
 - доступный backend endpoint `POST /api/miniapp/publish`.
 

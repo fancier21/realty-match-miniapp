@@ -353,12 +353,7 @@ button {
   letter-spacing: 0.02em;
   backdrop-filter: blur(10px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-  cursor: pointer;
-  transition: background-color 0.15s, transform 0.15s, border-color 0.15s;
-}
-
-.location-selector-pill:active {
-  transform: scale(0.97);
+  cursor: default;
 }
 
 .location-selector-pill .chevron-icon {
@@ -460,13 +455,8 @@ button {
   place-items: center;
   color: var(--app-heart);
   font-size: 20px;
-  cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
+  cursor: default;
   user-select: none;
-}
-
-.card-floating-heart:active {
-  transform: scale(1.15);
 }
 
 /* Typography (All Sans-Serif) */
@@ -594,6 +584,7 @@ button {
     font-size: 13px;
     line-height: 1.35;
     display: -webkit-box;
+    line-clamp: 1;
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
     overflow: hidden;

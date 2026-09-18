@@ -6,6 +6,7 @@ import {
   type FormEvent,
 } from "react";
 import {
+  ApiError,
   getUserFacingApiError,
   submitPublishRequest,
   type DirectionHint,
@@ -88,6 +89,7 @@ function App({ webApp: initialWebApp }: AppProps) {
   const [direction, setDirection] = useState<DirectionHint | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [retryNeedsNewIdempotencyKey, setRetryNeedsNewIdempotencyKey] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -219,7 +221,7 @@ function App({ webApp: initialWebApp }: AppProps) {
       const timer = setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.focus({ preventScroll: true });
-          setIsKeyboardOpen(true);
+          syncKeyboardState();
           scrollToSubmitButton();
         }
       }, 70);
@@ -243,18 +245,12 @@ function App({ webApp: initialWebApp }: AppProps) {
         return;
       }
 
-      const diff = Math.max(0, window.innerHeight - vv.height);
-      const isKb = diff > 80;
-      setIsKeyboardOpen(isKb);
-      setKeyboardHeight(isKb ? diff : 0);
-
-      if (isKb) {
-        scrollToSubmitButton();
-      }
+      syncKeyboardState();
     };
 
     vv.addEventListener("resize", handleViewportChange);
     vv.addEventListener("scroll", handleViewportChange);
+    handleViewportChange();
     return () => {
       vv.removeEventListener("resize", handleViewportChange);
       vv.removeEventListener("scroll", handleViewportChange);
@@ -281,11 +277,31 @@ function App({ webApp: initialWebApp }: AppProps) {
 
   function chooseDirection(nextDirection: DirectionHint) {
     activeWebApp?.expand?.();
+    if (direction !== null && direction !== nextDirection) {
+      setText("");
+    }
     setDirection(nextDirection);
     setScreen("form");
     setError(null);
+    setRetryNeedsNewIdempotencyKey(false);
     setIdempotencyKey(createIdempotencyKey());
-    setIsKeyboardOpen(true);
+  }
+
+  function syncKeyboardState() {
+    if (typeof window === "undefined" || !window.visualViewport) {
+      setIsKeyboardOpen(false);
+      setKeyboardHeight(0);
+      return;
+    }
+
+    const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
+    const isKeyboardOpen = keyboardHeight > 80;
+    setIsKeyboardOpen(isKeyboardOpen);
+    setKeyboardHeight(isKeyboardOpen ? keyboardHeight : 0);
+
+    if (isKeyboardOpen) {
+      scrollToSubmitButton();
+    }
   }
 
   function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
@@ -294,6 +310,7 @@ function App({ webApp: initialWebApp }: AppProps) {
     if (error) {
       setError(null);
     }
+    setRetryNeedsNewIdempotencyKey(false);
 
     if (nextText !== text) {
       setIdempotencyKey(createIdempotencyKey());
@@ -306,22 +323,28 @@ function App({ webApp: initialWebApp }: AppProps) {
     }
 
     setError(null);
+    setRetryNeedsNewIdempotencyKey(false);
     setScreen("direction");
   }
 
   function editSubmission() {
     setError(null);
+    setRetryNeedsNewIdempotencyKey(false);
     setScreen("form");
   }
 
   function retrySubmission() {
-    if (error && error.includes("другим текстом")) {
-      setIdempotencyKey(createIdempotencyKey());
+    const requestKey = retryNeedsNewIdempotencyKey
+      ? createIdempotencyKey()
+      : idempotencyKey;
+    if (requestKey !== idempotencyKey) {
+      setIdempotencyKey(requestKey);
     }
-    void submitForm();
+    setRetryNeedsNewIdempotencyKey(false);
+    void submitForm(requestKey);
   }
 
-  async function submitForm() {
+  async function submitForm(requestKey = idempotencyKey) {
     if (!direction) {
       setScreen("direction");
       return;
@@ -341,6 +364,9 @@ function App({ webApp: initialWebApp }: AppProps) {
       return;
     }
 
+    // Telegram omits start_param when the Main Mini App is opened from the
+    // bot profile/menu. The backend verifies initData and accepts that signed
+    // launch path, while still rejecting an explicitly unexpected parameter.
     const effectiveStartParam = startParam ?? "publish";
     if (effectiveStartParam !== "publish") {
       setError("Откройте приложение через кнопку «Подать заявку».");
@@ -359,13 +385,16 @@ function App({ webApp: initialWebApp }: AppProps) {
           text,
           start_param: effectiveStartParam,
         },
-        idempotencyKey,
+        requestKey,
       );
 
       activeWebApp?.disableClosingConfirmation?.();
       setScreen("success");
     } catch (requestError) {
       setError(getUserFacingApiError(requestError));
+      setRetryNeedsNewIdempotencyKey(
+        requestError instanceof ApiError && requestError.kind === "idempotency_conflict",
+      );
       setScreen("error");
     }
   }
@@ -511,13 +540,12 @@ function App({ webApp: initialWebApp }: AppProps) {
           </div>
         </div>
 
-        <button
+        <span
           className="location-selector-pill"
-          type="button"
-          aria-label="Текущий регион: Батуми, Грузия"
+          aria-label="Регион: Батуми, Грузия"
         >
           <span>Батуми</span>
-        </button>
+        </span>
       </header>
 
       {/* Screen 1: Welcome & Role Selection */}
@@ -557,13 +585,12 @@ function App({ webApp: initialWebApp }: AppProps) {
                   alt="Недвижимость Батуми у моря"
                   loading="eager"
                 />
-                <button
+                <span
                   className="card-floating-heart"
-                  type="button"
-                  aria-label="Сохранить в избранное"
+                  aria-hidden="true"
                 >
                   <span aria-hidden="true">❤️</span>
-                </button>
+                </span>
               </div>
             </div>
           </div>
@@ -715,7 +742,7 @@ function App({ webApp: initialWebApp }: AppProps) {
                 value={text}
                 onChange={handleTextChange}
                 onFocus={() => {
-                  setIsKeyboardOpen(true);
+                  setTimeout(syncKeyboardState, 50);
                   scrollToSubmitButton();
                 }}
                 onBlur={() => {

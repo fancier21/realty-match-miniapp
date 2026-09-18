@@ -61,7 +61,11 @@ test("getInitData extracts initData correctly", () => {
 
 test("submitPublishRequest returns success on queued 200 response", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
+  let capturedUrl: string | undefined;
+  let capturedInit: RequestInit | undefined;
+  globalThis.fetch = async (url, init) => {
+    capturedUrl = String(url);
+    capturedInit = init;
     return new Response(
       JSON.stringify({
         success: true,
@@ -89,6 +93,21 @@ test("submitPublishRequest returns success on queued 200 response", async () => 
     assert.equal(result.status, "queued");
     assert.equal(result.submission_id, "sub-123");
     assert.equal(result.source_event_id, 456);
+    assert.equal(capturedUrl, "/api/miniapp/publish");
+    assert.equal(capturedInit?.method, "POST");
+    assert.equal(capturedInit?.credentials, "omit");
+    assert.equal(capturedInit?.headers instanceof Headers, false);
+    assert.deepEqual(capturedInit?.headers, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "idem-1",
+    });
+    assert.deepEqual(JSON.parse(String(capturedInit?.body)), {
+      init_data: "test_data",
+      direction_hint: "demand",
+      text: "Ищу квартиру в Батуми 1+1 до 800$",
+      start_param: "publish",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
