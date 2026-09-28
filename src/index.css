@@ -64,12 +64,52 @@
     radial-gradient(circle at 90% 88%, #ede7dc 0%, transparent 55%),
     var(--app-bg);
 
+  /* Icon System Tokens */
+  --icon-xs: 14px;
+  --icon-sm: 18px;
+  --icon-md: 22px;
+  --icon-lg: 26px;
+  --icon-xl: 30px;
+
   /* Pure Sans-Serif typography throughout the app */
   font-family: var(--font-sans);
   color: var(--app-text);
   background: var(--app-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+/* Lucide Icon System Utility Classes */
+.app-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  vector-effect: non-scaling-stroke;
+}
+
+.app-icon--xs {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+.app-icon--sm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.app-icon--md {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.app-icon--lg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
+.app-icon--xl {
+  width: var(--icon-xl);
+  height: var(--icon-xl);
 }
 
 /* =========================================================

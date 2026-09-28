@@ -1,4 +1,16 @@
 import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  Heart,
+  Home,
+  MapPin,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
+import {
   useEffect,
   useRef,
   useState,
@@ -425,14 +437,7 @@ function App({ webApp: initialWebApp }: AppProps) {
       <main id="main-content" className="app-shell" tabIndex={-1}>
         <section className="success-screen" aria-live="polite" aria-labelledby="success-heading-title">
           <div className="success-badge-circle" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-              <path
-                d="M5 13l4 4L19 7"
-                strokeWidth="2.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <Check className="app-icon app-icon--xl" strokeWidth={2.8} />
           </div>
 
           <h1 id="success-heading-title" className="success-title">Заявка принята!</h1>
@@ -455,7 +460,9 @@ function App({ webApp: initialWebApp }: AppProps) {
               className="batumi-skyline-img"
             />
             <div className="location-city-capsule" aria-hidden="true">
-              <span>📍 Батуми →</span>
+              <MapPin className="app-icon app-icon--xs" />
+              <span>Батуми</span>
+              <ArrowRight className="app-icon app-icon--xs" />
             </div>
           </div>
 
@@ -480,7 +487,7 @@ function App({ webApp: initialWebApp }: AppProps) {
       <main id="main-content" className="app-shell" tabIndex={-1}>
         <section className="error-screen" role="alert" aria-live="assertive" aria-labelledby="error-heading-title">
           <div className="error-badge-circle" aria-hidden="true">
-            !
+            <AlertCircle className="app-icon app-icon--xl" />
           </div>
 
           <h1 id="error-heading-title" className="error-title">Не получилось отправить</h1>
@@ -496,7 +503,7 @@ function App({ webApp: initialWebApp }: AppProps) {
               onClick={retrySubmission}
               aria-label="Повторить отправку заявки"
             >
-              Повторить <span className="btn-arrow" aria-hidden="true">→</span>
+              Повторить <ArrowRight className="app-icon app-icon--sm btn-arrow" />
             </button>
             <button
               className="secondary-pill-btn"
@@ -531,7 +538,7 @@ function App({ webApp: initialWebApp }: AppProps) {
               onClick={goBackToDirection}
               aria-label="Назад к выбору роли"
             >
-              <span aria-hidden="true">←</span>
+              <ChevronLeft className="app-icon app-icon--md" />
             </button>
           )}
           <div className="brand-logo-text" aria-label="REALTY MATCH">
@@ -545,6 +552,7 @@ function App({ webApp: initialWebApp }: AppProps) {
           aria-label="Регион: Батуми, Грузия"
         >
           <span>Батуми</span>
+          {/*<ChevronDown className="app-icon app-icon--xs chevron-icon" />*/}
         </span>
       </header>
 
@@ -589,7 +597,7 @@ function App({ webApp: initialWebApp }: AppProps) {
                   className="card-floating-heart"
                   aria-hidden="true"
                 >
-                  <span aria-hidden="true">❤️</span>
+                  <Heart className="app-icon app-icon--md" fill="currentColor" />
                 </span>
               </div>
             </div>
@@ -615,20 +623,7 @@ function App({ webApp: initialWebApp }: AppProps) {
               aria-label="Ищу недвижимость, перейти к созданию заявки"
             >
               <div className="role-circle-btn" aria-hidden="true">
-                <svg
-                  width="26"
-                  height="26"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  focusable="false"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.3-4.3" />
-                </svg>
+                <Search className="app-icon app-icon--lg" strokeWidth={2} />
               </div>
               <span className="role-action-label">
                 <span>Ищу</span>
@@ -643,21 +638,7 @@ function App({ webApp: initialWebApp }: AppProps) {
               aria-label="Предлагаю недвижимость, перейти к публикации объекта"
             >
               <div className="role-circle-btn" aria-hidden="true">
-                <svg
-                  width="26"
-                  height="26"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  focusable="false"
-                >
-                  <path d="M3 10.5 12 3l9 7.5" />
-                  <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
-                  <path d="M9 21v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" />
-                </svg>
+                <Home className="app-icon app-icon--lg" strokeWidth={1.9} />
               </div>
               <span className="role-action-label">
                 <span>Предлагаю</span>
@@ -679,36 +660,9 @@ function App({ webApp: initialWebApp }: AppProps) {
           <div className="form-header-block">
             <div className="form-role-icon" aria-hidden="true">
               {direction === "demand" ? (
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  focusable="false"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.3-4.3" />
-                </svg>
+                <Search className="app-icon app-icon--lg" strokeWidth={2} />
               ) : (
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  focusable="false"
-                >
-                  <path d="M3 10.5 12 3l9 7.5" />
-                  <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
-                  <path d="M9 21v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" />
-                </svg>
+                <Home className="app-icon app-icon--lg" strokeWidth={1.9} />
               )}
             </div>
             <h1 id="form-heading-title" className="form-title">
@@ -758,8 +712,8 @@ function App({ webApp: initialWebApp }: AppProps) {
                 }}
                 placeholder={
                   direction === "demand"
-                    ? "Например:\nИщу квартиру 1+1 в Батуми,\nс октября (посуточно)."
-                    : "Например:\nСдаю квартиру 1+1 в Батуми,\nсветлая, с балконом (посуточно)."
+                    ? "Например:\nИщу квартиру 1+1 в Батуми до $500 в месяц."
+                    : "Например:\nСдаю квартиру 1+1 в Батуми за $700 в месяц, светлая, с балконом."
                 }
                 rows={isKeyboardOpen ? 4 : 5}
                 aria-required="true"
@@ -807,7 +761,7 @@ function App({ webApp: initialWebApp }: AppProps) {
                 "Отправляем…"
               ) : (
                 <>
-                  Продолжить <span className="btn-arrow" aria-hidden="true">→</span>
+                  Продолжить <ArrowRight className="app-icon app-icon--sm btn-arrow" />
                 </>
               )}
             </button>
@@ -820,18 +774,7 @@ function App({ webApp: initialWebApp }: AppProps) {
             />
 
             <div className="privacy-shield-badge">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
+              <ShieldCheck className="app-icon app-icon--sm" />
               <span>Ваша заявка будет обработана в приватном режиме</span>
             </div>
           </form>
