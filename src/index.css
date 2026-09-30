@@ -995,6 +995,389 @@ button {
   margin-top: auto;
 }
 
+/* =========================================================
+   Header Account Button & Location Selector Right Group
+   ========================================================= */
+.brand-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-account-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border: 1px solid var(--header-btn-border);
+  border-radius: 50%;
+  background: var(--header-btn-bg);
+  color: var(--app-text);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background-color 0.15s, transform 0.15s, border-color 0.15s;
+}
+
+.header-account-btn:active {
+  background: var(--header-btn-bg-active);
+  transform: scale(0.95);
+}
+
+.header-account-btn.active {
+  border-color: var(--app-focus);
+  box-shadow: 0 0 0 2px var(--app-focus);
+}
+
+/* =========================================================
+   Screen: Account ("Мой аккаунт")
+   ========================================================= */
+.account-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+}
+
+.my-apps-header-block {
+  margin: 6px 0 16px;
+}
+
+.user-profile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-muted);
+  margin-bottom: 4px;
+}
+
+.my-apps-title {
+  font-family: var(--font-sans);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--app-text);
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* Segmented Control Tabs (Pills) */
+.segmented-tab-row {
+  display: flex;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 9999px;
+  padding: 4px;
+  margin-bottom: 22px;
+  backdrop-filter: blur(14px);
+  box-shadow: var(--app-card-shadow);
+}
+
+.segmented-tab-item {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--app-muted);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+
+.segmented-tab-item:active {
+  transform: scale(0.97);
+}
+
+.segmented-tab-item.active {
+  background: var(--app-pill-bg);
+  color: var(--app-pill-text);
+  box-shadow: var(--app-pill-shadow);
+}
+
+:root[data-theme="dark"] .segmented-tab-item.active,
+.theme-dark .segmented-tab-item.active {
+  background: linear-gradient(135deg, #F97316 0%, #F43F5E 100%);
+  color: #FFFFFF;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .segmented-tab-item.active {
+    background: linear-gradient(135deg, #F97316 0%, #F43F5E 100%);
+    color: #FFFFFF;
+  }
+}
+
+.segmented-tab-count {
+  font-size: 12px;
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+/* Applications Cards List */
+.applications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.application-card {
+  background: #FFFFFF;
+  border: 1px solid var(--app-card-border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 120px;
+  contain: layout style;
+}
+
+:root[data-theme="dark"] .application-card,
+.theme-dark .application-card {
+  background: #181E2B;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .application-card {
+    background: #181E2B;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.application-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.application-card-text {
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--app-text);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-badge--active {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.status-badge--withdrawn {
+  background: rgba(244, 63, 94, 0.1);
+  color: #E11D48;
+  border: 1px solid rgba(244, 63, 94, 0.2);
+}
+
+.status-badge--expired {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.status-badge--in_progress {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.status-badge--archived {
+  background: rgba(148, 163, 184, 0.14);
+  color: #64748B;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+:root[data-theme="dark"] .status-badge--active,
+.theme-dark .status-badge--active {
+  background: rgba(16, 185, 129, 0.22);
+  color: #34D399;
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+:root[data-theme="dark"] .status-badge--withdrawn,
+.theme-dark .status-badge--withdrawn {
+  background: rgba(244, 63, 94, 0.2);
+  color: #FB7185;
+  border-color: rgba(251, 113, 133, 0.3);
+}
+
+:root[data-theme="dark"] .status-badge--expired,
+.theme-dark .status-badge--expired {
+  background: rgba(148, 163, 184, 0.18);
+  color: #94A3B8;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+:root[data-theme="dark"] .status-badge--in_progress,
+.theme-dark .status-badge--in_progress {
+  background: rgba(148, 163, 184, 0.18);
+  color: #CBD5E1;
+  border-color: rgba(203, 213, 225, 0.25);
+}
+
+:root[data-theme="dark"] .status-badge--archived,
+.theme-dark .status-badge--archived {
+  background: rgba(148, 163, 184, 0.18);
+  color: #94A3B8;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .status-badge--active {
+    background: rgba(16, 185, 129, 0.22);
+    color: #34D399;
+    border-color: rgba(52, 211, 153, 0.3);
+  }
+
+  :root:not([data-theme="light"]) .status-badge--withdrawn {
+    background: rgba(244, 63, 94, 0.2);
+    color: #FB7185;
+    border-color: rgba(251, 113, 133, 0.3);
+  }
+
+  :root:not([data-theme="light"]) .status-badge--expired {
+    background: rgba(148, 163, 184, 0.18);
+    color: #94A3B8;
+    border-color: rgba(148, 163, 184, 0.25);
+  }
+
+  :root:not([data-theme="light"]) .status-badge--in_progress {
+    background: rgba(148, 163, 184, 0.18);
+    color: #CBD5E1;
+    border-color: rgba(203, 213, 225, 0.25);
+  }
+
+  :root:not([data-theme="light"]) .status-badge--archived {
+    background: rgba(148, 163, 184, 0.18);
+    color: #94A3B8;
+    border-color: rgba(148, 163, 184, 0.25);
+  }
+}
+
+/* Card Footer */
+.application-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--textarea-divider);
+  margin-top: 2px;
+}
+
+.application-card-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--app-muted);
+}
+
+.card-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.18);
+  color: var(--app-danger);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, background-color 0.15s, opacity 0.15s;
+}
+
+.card-delete-btn:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.14);
+}
+
+.card-delete-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.card-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Empty Applications State */
+.empty-applications-card {
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 22px;
+  padding: 36px 20px;
+  box-shadow: var(--app-card-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.empty-applications-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--role-btn-bg);
+  border: 1px solid var(--role-btn-border);
+  display: grid;
+  place-items: center;
+  color: var(--app-muted);
+  margin-bottom: 4px;
+}
+
+.empty-applications-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--app-text);
+  margin: 0;
+}
+
+.empty-applications-text {
+  font-size: 14px;
+  color: var(--app-muted);
+  max-width: 280px;
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
 .secondary-pill-btn {
   width: 100%;
   min-height: 50px;

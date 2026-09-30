@@ -25,6 +25,7 @@ export interface TelegramWebApp {
   close?: () => void;
   enableClosingConfirmation?: () => void;
   disableClosingConfirmation?: () => void;
+  showConfirm?: (message: string, callback?: (confirmed: boolean) => void) => void;
   BackButton?: TelegramBackButton;
   colorScheme?: "light" | "dark";
   themeParams?: Record<string, string>;

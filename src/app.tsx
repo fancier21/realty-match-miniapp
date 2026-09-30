@@ -1,6 +1,7 @@
 import {
   AlertCircle,
   ArrowRight,
+  Calendar,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -9,9 +10,14 @@ import {
   MapPin,
   Search,
   ShieldCheck,
+  Trash2,
+  User,
 } from "lucide-react";
 import {
+  memo,
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -19,8 +25,11 @@ import {
 } from "react";
 import {
   ApiError,
+  fetchMyApplications,
   getUserFacingApiError,
   submitPublishRequest,
+  withdrawApplication,
+  type ApplicationSummary,
   type DirectionHint,
 } from "./api";
 import {
@@ -39,7 +48,13 @@ interface AppProps {
   webApp: TelegramWebApp | null;
 }
 
-type Screen = "direction" | "form" | "submitting" | "success" | "error";
+type Screen =
+  | "direction"
+  | "form"
+  | "submitting"
+  | "success"
+  | "error"
+  | "account";
 
 const batumiCardSrc = `${import.meta.env.BASE_URL}batumi-eu-square.jpeg`;
 const batumiSkylineSrc = `${import.meta.env.BASE_URL}batumi-skyline.png`;
@@ -96,6 +111,82 @@ function getValidationError(text: string): string | null {
   return null;
 }
 
+function formatDate(dateString: string): string {
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    return `${day}.${month}.${year}`;
+  } catch {
+    return "";
+  }
+}
+
+interface ApplicationCardProps {
+  app: ApplicationSummary;
+  isWithdrawing: boolean;
+  onWithdraw: (submissionId: string) => void;
+}
+
+const ApplicationCard = memo(function ApplicationCard({
+  app,
+  isWithdrawing,
+  onWithdraw,
+}: ApplicationCardProps) {
+  const dateStr = formatDate(app.created_at);
+
+  let statusLabel = "Активна";
+  let statusClass = "status-badge--active";
+
+  if (app.status === "withdrawn") {
+    statusLabel = "Отозвана";
+    statusClass = "status-badge--withdrawn";
+  } else if (app.status === "expired") {
+    statusLabel = "Истекла";
+    statusClass = "status-badge--expired";
+  } else if (app.status === "archived") {
+    statusLabel = "В архиве";
+    statusClass = "status-badge--archived";
+  } else if (app.status === "in_progress") {
+    statusLabel = "В работе";
+    statusClass = "status-badge--in_progress";
+  }
+
+  const isActive = !app.status || app.status === "active";
+
+  return (
+    <article className="application-card" role="listitem">
+      <div className="application-card-header">
+        <span className={`status-badge ${statusClass}`}>{statusLabel}</span>
+      </div>
+
+      <p className="application-card-text">{app.text}</p>
+
+      <div className="application-card-footer">
+        <div className="application-card-date">
+          <Calendar className="app-icon app-icon--xs" />
+          <span>{dateStr}</span>
+        </div>
+
+        {isActive && (
+          <button
+            type="button"
+            className="card-delete-btn"
+            disabled={isWithdrawing}
+            onClick={() => void onWithdraw(app.submission_id)}
+            aria-label="Отписаться от заявки"
+          >
+            <Trash2 className="app-icon app-icon--xs" />
+            <span>{isWithdrawing ? "Отписываемся..." : "Отписаться"}</span>
+          </button>
+        )}
+      </div>
+    </article>
+  );
+});
+
 function App({ webApp: initialWebApp }: AppProps) {
   const [screen, setScreen] = useState<Screen>("direction");
   const [direction, setDirection] = useState<DirectionHint | null>(null);
@@ -105,6 +196,12 @@ function App({ webApp: initialWebApp }: AppProps) {
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // My Applications state
+  const [applications, setApplications] = useState<ApplicationSummary[]>([]);
+  const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
+  const [loadingApps, setLoadingApps] = useState(false);
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -119,6 +216,93 @@ function App({ webApp: initialWebApp }: AppProps) {
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     getTelegramColorScheme(activeWebApp),
   );
+
+  // Fetch applications when entering the My Applications screen
+  useEffect(() => {
+    if (screen === "account") {
+      setLoadingApps(true);
+      fetchMyApplications(initData)
+        .then((res) => {
+          setApplications(res.applications || []);
+        })
+        .catch(() => {
+          setApplications([]);
+        })
+        .finally(() => {
+          setLoadingApps(false);
+        });
+    }
+  }, [screen, initData]);
+
+  const tgUser = useMemo(() => activeWebApp?.initDataUnsafe?.user, [activeWebApp]);
+  const userName = useMemo(() => {
+    if (!tgUser) return null;
+    return tgUser.first_name
+      ? `${tgUser.first_name}${tgUser.last_name ? ` ${tgUser.last_name}` : ""}`
+      : tgUser.username
+      ? `@${tgUser.username}`
+      : null;
+  }, [tgUser]);
+
+  const activeApps = useMemo(
+    () =>
+      applications.filter(
+        (app) =>
+          app.status === "active" ||
+          (!app.status &&
+            app.leads.some(
+              (l) => l.status === "active" || l.lifecycle_status === "active"
+            ))
+      ),
+    [applications]
+  );
+
+  const archivedApps = useMemo(
+    () =>
+      applications.filter(
+        (app) =>
+          app.status === "withdrawn" ||
+          app.status === "expired" ||
+          app.status === "archived" ||
+          app.status === "in_progress"
+      ),
+    [applications]
+  );
+
+  const displayedApps = activeTab === "active" ? activeApps : archivedApps;
+
+  const handleWithdraw = useCallback(async (submissionId: string) => {
+    const confirmMsg = "Отписаться от этой заявки?\nВы больше не будете получать по ней предложения.";
+    const doWithdraw = async () => {
+      setWithdrawingId(submissionId);
+      try {
+        await withdrawApplication(initData, submissionId);
+        setApplications((prev) =>
+          prev.map((item) =>
+            item.submission_id === submissionId
+              ? { ...item, status: "withdrawn" }
+              : item
+          )
+        );
+      } catch (err) {
+        setError(getUserFacingApiError(err));
+      } finally {
+        setWithdrawingId(null);
+      }
+    };
+
+    if (activeWebApp?.showConfirm) {
+      activeWebApp.showConfirm(confirmMsg, (confirmed) => {
+        if (confirmed) {
+          void doWithdraw();
+        }
+      });
+    } else {
+      if (typeof window !== "undefined" && window.confirm(confirmMsg)) {
+        void doWithdraw();
+      }
+    }
+  }, [activeWebApp, initData]);
 
   // Sync theme with Telegram WebApp and system preference
   useEffect(() => {
@@ -196,7 +380,7 @@ function App({ webApp: initialWebApp }: AppProps) {
       return;
     }
 
-    if (screen === "form") {
+    if (screen === "form" || screen === "account") {
       backButton.show();
       const onBack = () => {
         goBackToDirection();
@@ -245,23 +429,23 @@ function App({ webApp: initialWebApp }: AppProps) {
     }
   }, [screen, activeWebApp]);
 
-  // Track window.visualViewport changes (essential for iOS Safari and Chrome mobile)
+  // Track window.visualViewport changes (essential for iOS Safari and Chrome mobile, only on form screen)
   useEffect(() => {
+    if (screen !== "form") {
+      return;
+    }
+
     if (typeof window === "undefined" || !window.visualViewport) {
       return;
     }
 
     const vv = window.visualViewport;
     const handleViewportChange = () => {
-      if (screen !== "form") {
-        return;
-      }
-
       syncKeyboardState();
     };
 
-    vv.addEventListener("resize", handleViewportChange);
-    vv.addEventListener("scroll", handleViewportChange);
+    vv.addEventListener("resize", handleViewportChange, { passive: true });
+    vv.addEventListener("scroll", handleViewportChange, { passive: true });
     handleViewportChange();
     return () => {
       vv.removeEventListener("resize", handleViewportChange);
@@ -269,16 +453,18 @@ function App({ webApp: initialWebApp }: AppProps) {
     };
   }, [screen]);
 
-  // Telegram native viewportChanged event listener
+  // Telegram native viewportChanged event listener (only on form screen)
   useEffect(() => {
+    if (screen !== "form") {
+      return;
+    }
+
     if (!activeWebApp?.onEvent) {
       return;
     }
 
     const handleTgViewport = () => {
-      if (screen === "form") {
-        scrollToSubmitButton();
-      }
+      scrollToSubmitButton();
     };
 
     activeWebApp.onEvent("viewportChanged", handleTgViewport);
@@ -520,6 +706,140 @@ function App({ webApp: initialWebApp }: AppProps) {
   }
 
   // =========================================================
+  // Screen 5: Account ("Мой аккаунт")
+  // =========================================================
+  if (screen === "account") {
+    return (
+      <main id="main-content" className="app-shell" tabIndex={-1}>
+        <a href="#main-content" className="skip-link">
+          Перейти к основному содержимому
+        </a>
+
+        {/* Top Header */}
+        <header className="app-header" role="banner">
+          <div className="brand-header-left">
+            <button
+              className="header-back-btn"
+              type="button"
+              onClick={goBackToDirection}
+              aria-label="Назад к выбору роли"
+            >
+              <ChevronLeft className="app-icon app-icon--md" />
+            </button>
+            <div className="brand-logo-text" aria-label="REALTY MATCH">
+              <span>REALTY</span>
+              <span>MATCH</span>
+            </div>
+          </div>
+
+          <div className="brand-header-right">
+            <span
+              className="location-selector-pill"
+              aria-label="Регион: Батуми, Грузия"
+            >
+              <span>Батуми</span>
+              {/*<ChevronDown className="app-icon app-icon--xs chevron-icon" />*/}
+            </span>
+
+            <button
+              className="header-account-btn active"
+              type="button"
+              onClick={goBackToDirection}
+              aria-label="Мои заявки и аккаунт"
+              title="Мои заявки"
+            >
+              <User className="app-icon app-icon--md" />
+            </button>
+          </div>
+        </header>
+
+        <section className="account-screen" aria-labelledby="my-apps-heading">
+          <div className="my-apps-header-block">
+            {userName && (
+              <div className="user-profile-badge">
+                <User className="app-icon app-icon--xs" />
+                <span>{userName}</span>
+              </div>
+            )}
+            <h1 id="my-apps-heading" className="my-apps-title">
+              Мои заявки
+            </h1>
+          </div>
+
+          {/* Segmented Control Tabs */}
+          <div className="segmented-tab-row" role="tablist" aria-label="Фильтр заявок">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "active"}
+              className={`segmented-tab-item ${activeTab === "active" ? "active" : ""}`}
+              onClick={() => setActiveTab("active")}
+            >
+              <span>Активные</span>
+              {activeApps.length > 0 && (
+                <span className="segmented-tab-count">({activeApps.length})</span>
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "archive"}
+              className={`segmented-tab-item ${activeTab === "archive" ? "active" : ""}`}
+              onClick={() => setActiveTab("archive")}
+            >
+              <span>Архив</span>
+              {archivedApps.length > 0 && (
+                <span className="segmented-tab-count">({archivedApps.length})</span>
+              )}
+            </button>
+          </div>
+
+          {/* Applications List */}
+          {loadingApps ? (
+            <div className="empty-applications-card">
+              <p className="empty-applications-text">Загрузка ваших заявок...</p>
+            </div>
+          ) : displayedApps.length > 0 ? (
+            <div className="applications-list" role="list">
+              {displayedApps.map((app) => (
+                <ApplicationCard
+                  key={app.submission_id}
+                  app={app}
+                  isWithdrawing={withdrawingId === app.submission_id}
+                  onWithdraw={handleWithdraw}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-applications-card">
+              <div className="empty-applications-icon" aria-hidden="true">
+                <Search className="app-icon app-icon--lg" />
+              </div>
+              <h2 className="empty-applications-title">
+                {activeTab === "active" ? "Нет активных заявок" : "Архив пуст"}
+              </h2>
+              <p className="empty-applications-text">
+                {activeTab === "active"
+                  ? "У вас пока нет активных заявок. Вы можете создать новую прямо сейчас."
+                  : "У вас пока нет архивных заявок."}
+              </p>
+              {activeTab === "active" && (
+                <button
+                  type="button"
+                  className="pill-cta-btn"
+                  onClick={() => setScreen("direction")}
+                >
+                  Подать заявку <ArrowRight className="app-icon app-icon--sm btn-arrow" />
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+  // =========================================================
   // Screens 1 & 2
   // =========================================================
   return (
@@ -547,13 +867,25 @@ function App({ webApp: initialWebApp }: AppProps) {
           </div>
         </div>
 
-        <span
-          className="location-selector-pill"
-          aria-label="Регион: Батуми, Грузия"
-        >
-          <span>Батуми</span>
-          {/*<ChevronDown className="app-icon app-icon--xs chevron-icon" />*/}
-        </span>
+        <div className="brand-header-right">
+          <span
+            className="location-selector-pill"
+            aria-label="Регион: Батуми, Грузия"
+          >
+            <span>Батуми</span>
+            {/*<ChevronDown className="app-icon app-icon--xs chevron-icon" />*/}
+          </span>
+
+          <button
+            className="header-account-btn"
+            type="button"
+            onClick={() => setScreen("account")}
+            aria-label="Мои заявки и аккаунт"
+            title="Мои заявки"
+          >
+            <User className="app-icon app-icon--md" />
+          </button>
+        </div>
       </header>
 
       {/* Screen 1: Welcome & Role Selection */}

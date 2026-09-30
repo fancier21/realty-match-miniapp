@@ -198,3 +198,119 @@ export function getUserFacingApiError(error: unknown): string {
   return "Не удалось отправить заявку. Попробуйте ещё раз.";
 }
 
+export interface ApplicationMatch {
+  match_id: string;
+  matched_text: string;
+  created_at: string;
+  delivery_status: string;
+}
+
+export interface ApplicationLead {
+  lead_id: string | number;
+  city_code: string;
+  operation: string;
+  rental_term: string | null;
+  property_type: string;
+  building_type: string | null;
+  layout: string | null;
+  room_count: number | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  currency: string;
+  client_intent: string;
+  status?: string;
+  lifecycle_status?: string;
+  matches?: ApplicationMatch[];
+}
+
+export interface ApplicationSummary {
+  submission_id: string;
+  direction?: "demand" | "offer";
+  direction_hint?: "demand" | "offer";
+  text: string;
+  created_at: string;
+  status?: "active" | "withdrawn" | "expired" | "archived" | "in_progress";
+  leads: ApplicationLead[];
+}
+
+export async function fetchMyApplications(
+  initData: string,
+): Promise<{ success: boolean; applications: ApplicationSummary[] }> {
+  if (!initData || initData.trim().length === 0) {
+    return { success: true, applications: [] };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/miniapp/my-applications`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-Init-Data": initData,
+      },
+      credentials: "omit",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return { success: false, applications: [] };
+    }
+
+    const payload: unknown = await response.json();
+    if (isRecord(payload) && Array.isArray(payload.applications)) {
+      return {
+        success: true,
+        applications: payload.applications as ApplicationSummary[],
+      };
+    }
+
+    return { success: true, applications: [] };
+  } catch {
+    return { success: false, applications: [] };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function withdrawApplication(
+  initData: string,
+  submissionId: string,
+): Promise<{ success: boolean }> {
+  if (!initData || initData.trim().length === 0 || submissionId.startsWith("demo-")) {
+    return { success: true };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/miniapp/my-applications/${encodeURIComponent(submissionId)}/withdraw`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Init-Data": initData,
+        },
+        credentials: "omit",
+        signal: controller.signal,
+      },
+    );
+
+    if (!response.ok) {
+      throw new ApiError("request_failed", undefined, response.status);
+    }
+
+    return { success: true };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    return { success: true };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+

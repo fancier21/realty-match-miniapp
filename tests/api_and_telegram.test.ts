@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ApiError,
+  fetchMyApplications,
   getUserFacingApiError,
   submitPublishRequest,
+  withdrawApplication,
 } from "../src/api.ts";
 import {
   createIdempotencyKey,
@@ -275,6 +277,92 @@ test("submitPublishRequest maps network failure to network_error", async () => {
         return true;
       },
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("fetchMyApplications returns empty when initData is missing", async () => {
+  const res = await fetchMyApplications("");
+  assert.equal(res.success, true);
+  assert.deepEqual(res.applications, []);
+});
+
+test("fetchMyApplications sends X-Init-Data and parses applications", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  let capturedHeaders: any = null;
+
+  globalThis.fetch = async (url: any, init: any) => {
+    capturedUrl = String(url);
+    capturedHeaders = init?.headers;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        applications: [
+          {
+            submission_id: "sub-1",
+            text: "Ищу 1+1 в Батуми",
+            created_at: "2026-09-28T12:00:00Z",
+            status: "active",
+            leads: [],
+          },
+          {
+            submission_id: "sub-2",
+            text: "Ищу 2+1 в Батуми (отозвана)",
+            created_at: "2026-09-27T12:00:00Z",
+            status: "withdrawn",
+            leads: [],
+          },
+          {
+            submission_id: "sub-3",
+            text: "Ищу студию (истекла)",
+            created_at: "2026-09-26T12:00:00Z",
+            status: "expired",
+            leads: [],
+          },
+        ],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  try {
+    const res = await fetchMyApplications("valid_init_data");
+    assert.equal(res.success, true);
+    assert.equal(res.applications.length, 3);
+    assert.equal(res.applications[0].status, "active");
+    assert.equal(res.applications[1].status, "withdrawn");
+    assert.equal(res.applications[2].status, "expired");
+    assert.match(capturedUrl, /\/api\/miniapp\/my-applications/);
+    assert.equal(capturedHeaders["X-Init-Data"], "valid_init_data");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("withdrawApplication sends POST to endpoint with X-Init-Data", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  let capturedMethod = "";
+  let capturedHeaders: any = null;
+
+  globalThis.fetch = async (url: any, init: any) => {
+    capturedUrl = String(url);
+    capturedMethod = init?.method;
+    capturedHeaders = init?.headers;
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    const res = await withdrawApplication("valid_init_data", "sub-123");
+    assert.equal(res.success, true);
+    assert.match(capturedUrl, /\/api\/miniapp\/my-applications\/sub-123\/withdraw/);
+    assert.equal(capturedMethod, "POST");
+    assert.equal(capturedHeaders["X-Init-Data"], "valid_init_data");
   } finally {
     globalThis.fetch = originalFetch;
   }
