@@ -20,6 +20,8 @@ export type ApiErrorKind =
   | "timeout"
   | "network_error"
   | "rate_limited"
+  | "subscription_required"
+  | "service_unavailable"
   | "not_a_realty_request"
   | "text_too_short"
   | "text_too_long"
@@ -37,13 +39,20 @@ export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly code?: string;
   readonly statusCode?: number;
+  readonly channelUrl?: string;
 
-  constructor(kind: ApiErrorKind, code?: string, statusCode?: number) {
+  constructor(
+    kind: ApiErrorKind,
+    code?: string,
+    statusCode?: number,
+    channelUrl?: string,
+  ) {
     super(code ? `${kind}: ${code}` : kind);
     this.name = "ApiError";
     this.kind = kind;
     this.code = code;
     this.statusCode = statusCode;
+    this.channelUrl = channelUrl;
   }
 }
 
@@ -98,6 +107,16 @@ export async function submitPublishRequest(
 
     if (response.status === 409 || code === "IDEMPOTENCY_CONFLICT") {
       throw new ApiError("idempotency_conflict", code, response.status);
+    }
+
+    if (code === "SUBSCRIPTION_REQUIRED") {
+      const channelUrl =
+        typeof payload?.channel_url === "string" ? payload.channel_url : "https://t.me/RealtyMatch";
+      throw new ApiError("subscription_required", code, response.status, channelUrl);
+    }
+
+    if (code === "TELEGRAM_SERVICE_UNAVAILABLE" || response.status === 503) {
+      throw new ApiError("service_unavailable", code, response.status);
     }
 
     if (code === "NOT_A_REALTY_REQUEST" || status === "ignored") {
@@ -166,6 +185,10 @@ export function getUserFacingApiError(error: unknown): string {
     switch (error.kind) {
       case "rate_limited":
         return "Слишком много попыток. Подождите немного и попробуйте снова.";
+      case "subscription_required":
+        return "Для публикации заявки необходимо подписаться на наш официальный канал.";
+      case "service_unavailable":
+        return "Сервер временно не может связаться с Telegram. Попробуйте ещё раз через минуту.";
       case "timeout":
         return "Сервер отвечает слишком долго. Попробуйте ещё раз.";
       case "network_error":
@@ -309,6 +332,53 @@ export async function withdrawApplication(
       throw error;
     }
     return { success: true };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function checkSubscription(
+  initData: string,
+): Promise<{ success: boolean; is_subscribed: boolean; channel_url: string }> {
+  if (!initData || initData.trim().length === 0) {
+    return { success: true, is_subscribed: true, channel_url: "https://t.me/RealtyMatch" };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/miniapp/check-subscription`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-Init-Data": initData,
+      },
+      credentials: "omit",
+      signal: controller.signal,
+    });
+
+    const payload = (await response.json().catch(() => null)) as any;
+    if (response.ok && payload?.success === true) {
+      return {
+        success: true,
+        is_subscribed: Boolean(payload.is_subscribed),
+        channel_url:
+          typeof payload.channel_url === "string" ? payload.channel_url : "https://t.me/RealtyMatch",
+      };
+    }
+
+    return {
+      success: false,
+      is_subscribed: false,
+      channel_url: "https://t.me/RealtyMatch",
+    };
+  } catch {
+    return {
+      success: false,
+      is_subscribed: false,
+      channel_url: "https://t.me/RealtyMatch",
+    };
   } finally {
     clearTimeout(timeoutId);
   }

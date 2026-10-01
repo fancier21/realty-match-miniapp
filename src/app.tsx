@@ -1,10 +1,12 @@
 import {
   AlertCircle,
   ArrowRight,
+  Bell,
   Calendar,
   Check,
   ChevronDown,
   ChevronLeft,
+  ExternalLink,
   Heart,
   Home,
   MapPin,
@@ -12,6 +14,7 @@ import {
   ShieldCheck,
   Trash2,
   User,
+  X,
 } from "lucide-react";
 import {
   memo,
@@ -38,6 +41,7 @@ import {
   getStartParam,
   getTelegramColorScheme,
   getTelegramWebApp,
+  openTelegramLink,
   type TelegramWebApp,
 } from "./telegram";
 
@@ -202,6 +206,12 @@ function App({ webApp: initialWebApp }: AppProps) {
   const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
   const [loadingApps, setLoadingApps] = useState(false);
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+
+  // Subscription modal state
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [subscriptionChannelUrl, setSubscriptionChannelUrl] = useState("https://t.me/RealtyMatch");
+  const [isCheckingSubscription, setIsCheckingSubscription] = useState(false);
+  const [subscriptionCheckFailed, setSubscriptionCheckFailed] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -587,8 +597,18 @@ function App({ webApp: initialWebApp }: AppProps) {
       );
 
       activeWebApp?.disableClosingConfirmation?.();
+      setIsSubscriptionModalOpen(false);
+      setSubscriptionCheckFailed(false);
       setScreen("success");
     } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.kind === "subscription_required") {
+        setSubscriptionChannelUrl(requestError.channelUrl || "https://t.me/RealtyMatch");
+        setIsSubscriptionModalOpen(true);
+        setSubscriptionCheckFailed(false);
+        setScreen("form");
+        return;
+      }
+
       setError(getUserFacingApiError(requestError));
       setRetryNeedsNewIdempotencyKey(
         requestError instanceof ApiError && requestError.kind === "idempotency_conflict",
@@ -596,6 +616,57 @@ function App({ webApp: initialWebApp }: AppProps) {
       setScreen("error");
     }
   }
+
+  async function handleVerifyAndSubmit() {
+    setIsCheckingSubscription(true);
+    setSubscriptionCheckFailed(false);
+
+    const currentInitData = initData || activeWebApp?.initData || "";
+    const effectiveStartParam = startParam ?? "publish";
+
+    try {
+      await submitPublishRequest(
+        {
+          init_data: currentInitData,
+          direction_hint: direction!,
+          text,
+          start_param: effectiveStartParam,
+        },
+        idempotencyKey,
+      );
+
+      activeWebApp?.disableClosingConfirmation?.();
+      setIsSubscriptionModalOpen(false);
+      setSubscriptionCheckFailed(false);
+      setScreen("success");
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.kind === "subscription_required") {
+        setSubscriptionCheckFailed(true);
+      } else {
+        setIsSubscriptionModalOpen(false);
+        setError(getUserFacingApiError(requestError));
+        setRetryNeedsNewIdempotencyKey(
+          requestError instanceof ApiError && requestError.kind === "idempotency_conflict",
+        );
+        setScreen("error");
+      }
+    } finally {
+      setIsCheckingSubscription(false);
+    }
+  }
+
+  // Handle Escape key to close subscription modal
+  useEffect(() => {
+    if (!isSubscriptionModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsSubscriptionModalOpen(false);
+        setSubscriptionCheckFailed(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSubscriptionModalOpen]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1111,6 +1182,81 @@ function App({ webApp: initialWebApp }: AppProps) {
             </div>
           </form>
         </section>
+      )}
+
+      {/* Mandatory Channel Subscription Modal */}
+      {isSubscriptionModalOpen && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            setIsSubscriptionModalOpen(false);
+            setSubscriptionCheckFailed(false);
+          }}
+        >
+          <div
+            className="subscription-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscription-modal-title"
+            aria-describedby="subscription-modal-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={() => {
+                setIsSubscriptionModalOpen(false);
+                setSubscriptionCheckFailed(false);
+              }}
+              aria-label="Закрыть окно"
+            >
+              <X className="app-icon app-icon--sm" />
+            </button>
+
+            <div className="modal-icon-badge" aria-hidden="true">
+              <Bell className="app-icon app-icon--lg" />
+            </div>
+
+            <h2 id="subscription-modal-title" className="modal-title">
+              Подпишитесь на канал
+            </h2>
+
+            <p id="subscription-modal-desc" className="modal-description">
+              Чтобы отправить заявку и получать подходящие предложения, необходимо подписаться на наш официальный канал{" "}
+              <strong>@RealtyMatch</strong>.
+            </p>
+
+            {subscriptionCheckFailed && (
+              <div className="modal-warning-box" role="alert" aria-live="assertive">
+                <AlertCircle className="app-icon app-icon--sm modal-warning-icon" />
+                <span>
+                  Подписка пока не найдена. Убедитесь, что вы нажали «Подписаться» в канале, и попробуйте снова.
+                </span>
+              </div>
+            )}
+
+            <div className="modal-actions-col">
+              <button
+                type="button"
+                className="pill-cta-btn"
+                onClick={() => openTelegramLink(activeWebApp, subscriptionChannelUrl)}
+              >
+                <span>Подписаться на канал</span>
+                <ExternalLink className="app-icon app-icon--sm btn-arrow" />
+              </button>
+
+              <button
+                type="button"
+                className="secondary-pill-btn"
+                disabled={isCheckingSubscription}
+                onClick={() => void handleVerifyAndSubmit()}
+              >
+                {isCheckingSubscription ? "Проверяем подписку…" : "Я подписался, отправить"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

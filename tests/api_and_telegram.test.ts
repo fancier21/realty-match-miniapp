@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ApiError,
+  checkSubscription,
   fetchMyApplications,
   getUserFacingApiError,
   submitPublishRequest,
@@ -11,6 +12,7 @@ import {
   createIdempotencyKey,
   getInitData,
   getStartParam,
+  openTelegramLink,
 } from "../src/telegram.ts";
 
 test("getUserFacingApiError formats all ApiError kinds properly", () => {
@@ -27,6 +29,8 @@ test("getUserFacingApiError formats all ApiError kinds properly", () => {
   assert.match(getUserFacingApiError(new ApiError("invalid_start_param")), /Неверный сценарий запуска/);
   assert.match(getUserFacingApiError(new ApiError("request_too_large")), /превышает допустимый предел/);
   assert.match(getUserFacingApiError(new ApiError("processing_failed")), /Не удалось обработать заявку/);
+  assert.match(getUserFacingApiError(new ApiError("subscription_required")), /подписаться на наш официальный канал/);
+  assert.match(getUserFacingApiError(new ApiError("service_unavailable")), /Сервер временно не может связаться/);
   assert.match(getUserFacingApiError(new Error("generic error")), /Не удалось отправить заявку/);
 });
 
@@ -366,4 +370,109 @@ test("withdrawApplication sends POST to endpoint with X-Init-Data", async () => 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("submitPublishRequest maps 403 SUBSCRIPTION_REQUIRED to subscription_required error with channelUrl", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        status: "failed",
+        code: "SUBSCRIPTION_REQUIRED",
+        channel_url: "https://t.me/RealtyMatch",
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  try {
+    await submitPublishRequest(
+      {
+        init_data: "valid_init_data",
+        direction_hint: "demand",
+        text: "Ищу студию в Батуми до 500$",
+        start_param: "publish",
+      },
+      "test-key-sub",
+    );
+    assert.fail("Should have thrown ApiError");
+  } catch (err: any) {
+    assert.ok(err instanceof ApiError);
+    assert.equal(err.kind, "subscription_required");
+    assert.equal(err.statusCode, 403);
+    assert.equal(err.channelUrl, "https://t.me/RealtyMatch");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("submitPublishRequest maps 503 TELEGRAM_SERVICE_UNAVAILABLE to service_unavailable error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        status: "failed",
+        code: "TELEGRAM_SERVICE_UNAVAILABLE",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  try {
+    await submitPublishRequest(
+      {
+        init_data: "valid_init_data",
+        direction_hint: "demand",
+        text: "Ищу студию в Батуми до 500$",
+        start_param: "publish",
+      },
+      "test-key-503",
+    );
+    assert.fail("Should have thrown ApiError");
+  } catch (err: any) {
+    assert.ok(err instanceof ApiError);
+    assert.equal(err.kind, "service_unavailable");
+    assert.equal(err.statusCode, 503);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("checkSubscription returns subscription status and channelUrl", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, init: any) => {
+    assert.match(String(url), /\/api\/miniapp\/check-subscription/);
+    assert.equal(init?.headers?.["X-Init-Data"], "valid_init_data");
+    return new Response(
+      JSON.stringify({
+        success: true,
+        is_subscribed: false,
+        channel_url: "https://t.me/RealtyMatch",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  try {
+    const res = await checkSubscription("valid_init_data");
+    assert.equal(res.success, true);
+    assert.equal(res.is_subscribed, false);
+    assert.equal(res.channel_url, "https://t.me/RealtyMatch");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("openTelegramLink delegates to webApp.openTelegramLink when available", () => {
+  let openedUrl = "";
+  const mockWebApp: any = {
+    openTelegramLink: (url: string) => {
+      openedUrl = url;
+    },
+  };
+
+  openTelegramLink(mockWebApp, "https://t.me/RealtyMatch");
+  assert.equal(openedUrl, "https://t.me/RealtyMatch");
 });

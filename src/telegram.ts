@@ -26,6 +26,8 @@ export interface TelegramWebApp {
   enableClosingConfirmation?: () => void;
   disableClosingConfirmation?: () => void;
   showConfirm?: (message: string, callback?: (confirmed: boolean) => void) => void;
+  openTelegramLink?: (url: string) => void;
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   BackButton?: TelegramBackButton;
   colorScheme?: "light" | "dark";
   themeParams?: Record<string, string>;
@@ -172,5 +174,23 @@ export function createIdempotencyKey(): string {
   }
 
   return `miniapp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Opens a Telegram channel or link natively within Telegram WebApp if supported,
+ * otherwise falls back to opening in a new browser tab.
+ */
+export function openTelegramLink(webApp: TelegramWebApp | null, url: string): void {
+  if (webApp && typeof webApp.openTelegramLink === "function") {
+    webApp.openTelegramLink(url);
+    return;
+  }
+  if (webApp && typeof webApp.openLink === "function") {
+    webApp.openLink(url);
+    return;
+  }
+  if (typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 }
 
