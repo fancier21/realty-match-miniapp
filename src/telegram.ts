@@ -1,5 +1,7 @@
 export interface TelegramInitDataUnsafe {
   start_param?: string;
+  chat_type?: "sender" | "private" | "group" | "supergroup" | "channel";
+  chat_instance?: string;
   user?: {
     id: number;
     first_name?: string;
@@ -33,6 +35,15 @@ export interface TelegramWebApp {
   themeParams?: Record<string, string>;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
+  requestWriteAccess?: (
+    callback?: (allowed: boolean) => void,
+  ) => void;
+  enableVerticalSwipes?: () => void;
+  disableVerticalSwipes?: () => void;
+  isExpanded?: boolean;
+  isActive?: boolean;
+  viewportHeight?: number;
+  viewportStableHeight?: number;
   onEvent?: (eventType: string, eventHandler: () => void) => void;
   offEvent?: (eventType: string, eventHandler: () => void) => void;
 }
@@ -46,57 +57,79 @@ declare global {
 }
 
 /**
- * Detects the active colorScheme from Telegram WebApp or falls back to system preference.
+ * Detect Telegram color scheme.
  */
-export function getTelegramColorScheme(webApp: TelegramWebApp | null): "light" | "dark" {
-  if (webApp?.colorScheme === "dark" || webApp?.colorScheme === "light") {
+export function getTelegramColorScheme(
+  webApp: TelegramWebApp | null,
+): "light" | "dark" {
+  if (
+    webApp?.colorScheme === "dark" ||
+    webApp?.colorScheme === "light"
+  ) {
     return webApp.colorScheme;
   }
-  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
+
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia?.(
+      "(prefers-color-scheme: dark)",
+    ).matches
+  ) {
     return "dark";
   }
+
   return "light";
 }
 
 /**
- * Initializes the Telegram WebApp when the page is opened inside Telegram.
- * The app may still be rendered outside Telegram so that local development
- * and the error state remain usable.
+ * Initialize Telegram Mini App.
+ *
+ * IMPORTANT:
+ * - ready() is called.
+ * - enableVerticalSwipes() is enabled when available.
+ * - expand() is NEVER called here.
+ * - close() is NEVER called automatically.
+ *
+ * The final presentation mode is controlled by Telegram itself
+ * according to the Mini App launch context and client.
  */
 export function initializeTelegramWebApp(): TelegramWebApp | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
   const webApp = window.Telegram?.WebApp;
   if (!webApp) {
     return null;
   }
 
   webApp.ready();
-  webApp.expand?.();
+  webApp.enableVerticalSwipes?.();
   return webApp;
 }
-
 /**
- * Returns the current Telegram WebApp instance from window if available.
+ * Get current Telegram WebApp instance.
  */
 export function getTelegramWebApp(): TelegramWebApp | null {
-  if (typeof window !== "undefined" && window.Telegram?.WebApp) {
+  if (
+    typeof window !== "undefined" &&
+    window.Telegram?.WebApp
+  ) {
     return window.Telegram.WebApp;
   }
+
   return null;
 }
 
 /**
- * Retrieves Telegram WebApp initData string.
- * Priority:
- * 1. webApp.initData (populated by Telegram client)
- * 2. URL hash `#tgWebAppData=...` (fallback if Telegram script didn't populate it)
- * 3. URL query `?tgWebAppData=...` (fallback for custom iframe wrappers)
+ * Get signed Telegram initData.
+ *
+ * Authentication must use webApp.initData.
+ * initDataUnsafe must never be used as authentication proof.
  */
-export function getInitData(webApp: TelegramWebApp | null): string {
-  if (webApp?.initData && webApp.initData.trim().length > 0) {
+export function getInitData(
+  webApp: TelegramWebApp | null,
+): string {
+  if (
+    webApp?.initData &&
+    webApp.initData.trim().length > 0
+  ) {
     return webApp.initData.trim();
   }
 
@@ -105,21 +138,35 @@ export function getInitData(webApp: TelegramWebApp | null): string {
       const hash = window.location.hash.startsWith("#")
         ? window.location.hash.slice(1)
         : window.location.hash;
+
       if (hash) {
         const hashParams = new URLSearchParams(hash);
-        const fromHash = hashParams.get("tgWebAppData");
-        if (fromHash && fromHash.trim().length > 0) {
+        const fromHash =
+          hashParams.get("tgWebAppData");
+
+        if (
+          fromHash &&
+          fromHash.trim().length > 0
+        ) {
           return fromHash.trim();
         }
       }
 
-      const urlParams = new URLSearchParams(window.location.search);
-      const fromQuery = urlParams.get("tgWebAppData");
-      if (fromQuery && fromQuery.trim().length > 0) {
+      const urlParams = new URLSearchParams(
+        window.location.search,
+      );
+
+      const fromQuery =
+        urlParams.get("tgWebAppData");
+
+      if (
+        fromQuery &&
+        fromQuery.trim().length > 0
+      ) {
         return fromQuery.trim();
       }
     } catch {
-      // Ignore URL parsing issues
+      // Ignore malformed URL data.
     }
   }
 
@@ -127,35 +174,61 @@ export function getInitData(webApp: TelegramWebApp | null): string {
 }
 
 /**
- * This value is read from initDataUnsafe or URL parameters only as launch context for the UI.
- * Authentication must always use webApp.initData, which is signed by Telegram.
+ * Get start parameter.
+ *
+ * This is launch context only.
+ * It is NOT an authentication mechanism.
  */
-export function getStartParam(webApp: TelegramWebApp | null): string | null {
-  const startParam = webApp?.initDataUnsafe?.start_param;
-  if (typeof startParam === "string" && startParam.length > 0) {
+export function getStartParam(
+  webApp: TelegramWebApp | null,
+): string | null {
+  const startParam =
+    webApp?.initDataUnsafe?.start_param;
+
+  if (
+    typeof startParam === "string" &&
+    startParam.length > 0
+  ) {
     return startParam;
   }
 
   if (typeof window !== "undefined") {
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const fromQuery = urlParams.get("tgWebAppStartParam") || urlParams.get("startapp");
-      if (fromQuery && fromQuery.length > 0) {
+      const urlParams = new URLSearchParams(
+        window.location.search,
+      );
+
+      const fromQuery =
+        urlParams.get("tgWebAppStartParam") ||
+        urlParams.get("startapp");
+
+      if (
+        fromQuery &&
+        fromQuery.length > 0
+      ) {
         return fromQuery;
       }
 
       const hash = window.location.hash.startsWith("#")
         ? window.location.hash.slice(1)
         : window.location.hash;
+
       if (hash) {
         const hashParams = new URLSearchParams(hash);
-        const fromHash = hashParams.get("tgWebAppStartParam") || hashParams.get("startapp");
-        if (fromHash && fromHash.length > 0) {
+
+        const fromHash =
+          hashParams.get("tgWebAppStartParam") ||
+          hashParams.get("startapp");
+
+        if (
+          fromHash &&
+          fromHash.length > 0
+        ) {
           return fromHash;
         }
       }
     } catch {
-      // Silently ignore URL parsing issues
+      // Ignore malformed URL data.
     }
   }
 
@@ -163,34 +236,103 @@ export function getStartParam(webApp: TelegramWebApp | null): string | null {
 }
 
 export function createIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
 
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.getRandomValues === "function"
+  ) {
     const values = new Uint32Array(4);
+
     crypto.getRandomValues(values);
-    return Array.from(values, (value) => value.toString(16).padStart(8, "0")).join("-");
+
+    return Array.from(
+      values,
+      (value) =>
+        value.toString(16).padStart(8, "0"),
+    ).join("-");
   }
 
-  return `miniapp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `miniapp-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
 }
 
 /**
- * Opens a Telegram channel or link natively within Telegram WebApp if supported,
- * otherwise falls back to opening in a new browser tab.
+ * Open Telegram link.
  */
-export function openTelegramLink(webApp: TelegramWebApp | null, url: string): void {
-  if (webApp && typeof webApp.openTelegramLink === "function") {
+export function openTelegramLink(
+  webApp: TelegramWebApp | null,
+  url: string,
+): void {
+  if (
+    webApp &&
+    typeof webApp.openTelegramLink === "function"
+  ) {
     webApp.openTelegramLink(url);
     return;
   }
-  if (webApp && typeof webApp.openLink === "function") {
+
+  if (
+    webApp &&
+    typeof webApp.openLink === "function"
+  ) {
     webApp.openLink(url);
     return;
   }
+
   if (typeof window !== "undefined") {
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(
+      url,
+      "_blank",
+      "noopener,noreferrer",
+    );
   }
 }
 
+/**
+ * Request permission for bot direct messages.
+ */
+export function requestTelegramWriteAccess(
+  webApp: TelegramWebApp | null,
+  timeoutMs = 10000,
+): Promise<boolean> {
+  if (
+    !webApp ||
+    typeof webApp.requestWriteAccess !== "function"
+  ) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(false);
+      }
+    }, timeoutMs);
+
+    try {
+      webApp.requestWriteAccess?.((allowed) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(Boolean(allowed));
+        }
+      });
+    } catch {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(false);
+      }
+    }
+  });
+}

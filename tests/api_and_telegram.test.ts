@@ -13,6 +13,7 @@ import {
   getInitData,
   getStartParam,
   openTelegramLink,
+  requestTelegramWriteAccess,
 } from "../src/telegram.ts";
 
 test("getUserFacingApiError formats all ApiError kinds properly", () => {
@@ -475,4 +476,32 @@ test("openTelegramLink delegates to webApp.openTelegramLink when available", () 
 
   openTelegramLink(mockWebApp, "https://t.me/RealtyMatch");
   assert.equal(openedUrl, "https://t.me/RealtyMatch");
+});
+
+test("requestTelegramWriteAccess returns false when webApp is null or method missing", async () => {
+  const resultNull = await requestTelegramWriteAccess(null);
+  assert.equal(resultNull, false);
+
+  const resultNoMethod = await requestTelegramWriteAccess({} as any);
+  assert.equal(resultNoMethod, false);
+});
+
+test("requestTelegramWriteAccess returns true when granted", async () => {
+  const mockWebApp: any = {
+    requestWriteAccess: (cb: (allowed: boolean) => void) => {
+      cb(true);
+    },
+  };
+  const result = await requestTelegramWriteAccess(mockWebApp);
+  assert.equal(result, true);
+});
+
+test("requestTelegramWriteAccess returns false when rejected", async () => {
+  const mockWebApp: any = {
+    requestWriteAccess: (cb: (allowed: boolean) => void) => {
+      cb(false);
+    },
+  };
+  const result = await requestTelegramWriteAccess(mockWebApp);
+  assert.equal(result, false);
 });

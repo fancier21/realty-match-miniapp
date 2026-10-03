@@ -255,6 +255,7 @@ body,
 }
 
 body {
+  /*min-height: var(--tg-viewport-stable-height, 100dvh);*/
   min-height: 100dvh;
   background: var(--body-bg-gradient);
   background-attachment: fixed;
@@ -1398,153 +1399,131 @@ button {
 }
 
 /* =========================================================
-   Subscription Modal
+   Subscription Inline Banner
    ========================================================= */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  animation: fadeInModal 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.subscription-modal-card {
-  position: relative;
-  width: 100%;
-  max-width: 380px;
-  background: var(--app-surface);
-  border: 1px solid var(--app-card-border);
-  border-radius: 24px;
-  padding: 32px 24px 24px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22);
+.subscription-inline-banner {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  animation: slideUpModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-card-border);
+  border-radius: 18px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  animation: fadeInBanner 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   box-sizing: border-box;
 }
 
-.modal-close-btn {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid var(--app-card-border);
-  background: var(--role-btn-bg);
-  color: var(--app-muted);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+.subscription-banner-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.modal-close-btn:hover {
-  color: var(--app-text);
-  background: var(--app-pill-bg);
-}
-
-.modal-icon-badge {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(59, 130, 246, 0.22));
-  border: 1px solid rgba(56, 189, 248, 0.35);
+.subscription-banner-icon {
+  flex-shrink: 0;
   color: #0284c7;
-  display: grid;
-  place-items: center;
-  margin-bottom: 16px;
 }
 
-:root[data-theme="dark"] .modal-icon-badge,
-.theme-dark .modal-icon-badge {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(59, 130, 246, 0.3));
+:root[data-theme="dark"] .subscription-banner-icon,
+.theme-dark .subscription-banner-icon {
   color: #38bdf8;
-  border-color: rgba(56, 189, 248, 0.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .modal-icon-badge {
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(59, 130, 246, 0.3));
-    color: #38bdf8;
-    border-color: rgba(56, 189, 248, 0.4);
-  }
-}
-
-.modal-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--app-text);
-  margin: 0 0 8px;
-  letter-spacing: -0.01em;
-}
-
-.modal-description {
+.subscription-banner-title {
   font-size: 14px;
-  color: var(--app-muted);
-  line-height: 1.45;
-  margin: 0 0 20px;
+  line-height: 1.4;
+  color: var(--app-text);
 }
 
-.modal-description strong {
+.subscription-banner-title strong {
   color: var(--app-text);
   font-weight: 600;
 }
 
-.modal-warning-box {
+.subscription-banner-hint {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: rgba(244, 63, 94, 0.08);
-  border: 1px solid rgba(244, 63, 94, 0.2);
-  color: var(--app-danger);
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: var(--app-text);
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.4;
   text-align: left;
-  margin-bottom: 20px;
+}
+
+.subscription-hint-arrow {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #3b82f6;
+}
+
+.subscription-channel-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  text-decoration: none;
   width: 100%;
   box-sizing: border-box;
 }
 
-.modal-warning-icon {
+:root[data-theme="dark"] .subscription-channel-link,
+.theme-dark .subscription-channel-link {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+}
+
+.subscription-channel-link:hover {
+  background: rgba(59, 130, 246, 0.18);
+}
+
+:root[data-theme="dark"] .subscription-channel-link:hover,
+.theme-dark .subscription-channel-link:hover {
+  background: rgba(56, 189, 248, 0.2);
+}
+
+.subscription-banner-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  color: var(--app-danger);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.subscription-warning-icon {
   flex-shrink: 0;
   margin-top: 1px;
 }
 
-.modal-actions-col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-}
-
-@keyframes fadeInModal {
+@keyframes fadeInBanner {
   from {
     opacity: 0;
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
-  }
-}
-
-@keyframes slideUpModal {
-  from {
-    opacity: 0;
-    transform: translateY(16px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
@@ -1564,8 +1543,7 @@ button {
   .card-layer-1,
   .card-layer-2,
   .card-layer-top,
-  .modal-backdrop,
-  .subscription-modal-card {
+  .subscription-inline-banner {
     transform: none !important;
     animation: none !important;
   }
