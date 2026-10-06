@@ -19,5 +19,24 @@
   <body>
     <div id="root"></div>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      // Set the theme before the app bundle has loaded, so the very first paint already matches
+      // Telegram's colour scheme (which can differ from the OS one, e.g. Telegram night mode on a
+      // light OS). Mirrors getTelegramColorScheme() in src/telegram.ts; the app keeps data-theme
+      // up to date afterwards (themeChanged event). If this script is blocked (e.g. by a CSP) or
+      // fails, the CSS falls back to prefers-color-scheme until React sets the attribute.
+      (function () {
+        var scheme = "light";
+        try {
+          var tg = window.Telegram && window.Telegram.WebApp;
+          if (tg && (tg.colorScheme === "dark" || tg.colorScheme === "light")) {
+            scheme = tg.colorScheme;
+          } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+            scheme = "dark";
+          }
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", scheme);
+      })();
+    </script>
   </body>
 </html>
