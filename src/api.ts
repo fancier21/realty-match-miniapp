@@ -331,7 +331,14 @@ export async function withdrawApplication(
     if (error instanceof ApiError) {
       throw error;
     }
-    return { success: true };
+
+    // Previously any network error/timeout was swallowed and reported as success,
+    // so the UI marked the application as withdrawn although the server never saw it.
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError("timeout");
+    }
+
+    throw new ApiError("network_error");
   } finally {
     clearTimeout(timeoutId);
   }
@@ -383,4 +390,3 @@ export async function checkSubscription(
     clearTimeout(timeoutId);
   }
 }
-

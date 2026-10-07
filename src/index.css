@@ -8,7 +8,9 @@
   --app-bg: var(--tg-theme-bg-color, #f8f6f2);
   --app-surface: var(--tg-theme-secondary-bg-color, #ffffff);
   --app-text: var(--tg-theme-text-color, #111827);
-  --app-muted: var(--tg-theme-hint-color, #4b5563);
+  /* Deliberately NOT var(--tg-theme-hint-color): Telegram's default hint colour (#999) is only
+     ~2.3-2.9:1 on our light surfaces. This value is >= 4.5:1 on all of them. */
+  --app-muted: #4b5563;
   --app-card-bg: rgba(255, 255, 255, 0.76);
   --app-card-border: rgba(0, 0, 0, 0.08);
   --app-card-shadow: 0 10px 28px rgba(0, 0, 0, 0.04);
@@ -41,7 +43,7 @@
   --context-badge-bg: rgba(255, 255, 255, 0.85);
   --context-badge-border: var(--app-card-border);
   --context-badge-text: var(--app-muted);
-  --textarea-placeholder: rgba(0, 0, 0, 0.52);
+  --textarea-placeholder: rgba(0, 0, 0, 0.58);
   --textarea-divider: rgba(0, 0, 0, 0.06);
   --privacy-icon-color: var(--app-muted);
   --success-circle-bg: #ffffff;
@@ -115,8 +117,7 @@
 /* =========================================================
    Dark Mode - Sunset Glow & Romance Palette
    ========================================================= */
-:root[data-theme="dark"],
-.theme-dark {
+:root[data-theme="dark"] {
   --app-bg: #0F131C;
   --app-surface: #181B25;
   --app-text: #F8FAFC;
@@ -125,12 +126,13 @@
   --app-card-border: rgba(249, 115, 22, 0.18);
   --app-card-shadow: 0 14px 38px rgba(0, 0, 0, 0.5), 0 0 20px rgba(249, 115, 22, 0.06);
   --app-pill-bg: linear-gradient(135deg, #F97316 0%, #F43F5E 100%);
-  --app-pill-text: #FFFFFF;
+  /* Dark text: white on this orange->pink gradient is only 2.8:1; #0F131C is 5.1:1 */
+  --app-pill-text: #0F131C;
   --app-pill-border: rgba(255, 255, 255, 0.14);
   --app-pill-shadow: 0 8px 24px rgba(249, 115, 22, 0.35), 0 2px 8px rgba(244, 63, 94, 0.2);
   --app-check: #10B981;
   --app-heart: #F43F5E;
-  --app-danger: #F43F5E;
+  --app-danger: #FB7185;
   --app-focus: #F97316;
 
   /* Component tokens - Dark Mode */
@@ -153,7 +155,7 @@
   --context-badge-bg: rgba(24, 27, 37, 0.85);
   --context-badge-border: rgba(249, 115, 22, 0.2);
   --context-badge-text: #CBD5E1;
-  --textarea-placeholder: rgba(248, 250, 252, 0.42);
+  --textarea-placeholder: rgba(248, 250, 252, 0.52);
   --textarea-divider: rgba(255, 255, 255, 0.08);
   --privacy-icon-color: #38BDF8;
   --success-circle-bg: rgba(24, 27, 37, 0.9);
@@ -178,6 +180,12 @@
     var(--app-bg);
 }
 
+/* Safety-net fallback only. index.html sets <html data-theme> from Telegram's colour scheme
+   right after telegram-web-app.js loads, and React keeps it updated; this block covers the
+   short window before that script runs, or the case where it is blocked (e.g. by a CSP).
+   It follows the OS scheme so the first paint isn't a white flash. Once data-theme is set it
+   is the only source of truth (every component-level dark rule keys off it).
+   KEEP THESE DECLARATIONS IN SYNC with :root[data-theme="dark"] above. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --app-bg: #0F131C;
@@ -188,12 +196,12 @@
     --app-card-border: rgba(249, 115, 22, 0.18);
     --app-card-shadow: 0 14px 38px rgba(0, 0, 0, 0.5), 0 0 20px rgba(249, 115, 22, 0.06);
     --app-pill-bg: linear-gradient(135deg, #F97316 0%, #F43F5E 100%);
-    --app-pill-text: #FFFFFF;
+    --app-pill-text: #0F131C;
     --app-pill-border: rgba(255, 255, 255, 0.14);
     --app-pill-shadow: 0 8px 24px rgba(249, 115, 22, 0.35), 0 2px 8px rgba(244, 63, 94, 0.2);
     --app-check: #10B981;
     --app-heart: #F43F5E;
-    --app-danger: #F43F5E;
+    --app-danger: #FB7185;
     --app-focus: #F97316;
 
     --header-btn-bg: rgba(24, 27, 37, 0.82);
@@ -215,7 +223,7 @@
     --context-badge-bg: rgba(24, 27, 37, 0.85);
     --context-badge-border: rgba(249, 115, 22, 0.2);
     --context-badge-text: #CBD5E1;
-    --textarea-placeholder: rgba(248, 250, 252, 0.42);
+    --textarea-placeholder: rgba(248, 250, 252, 0.52);
     --textarea-divider: rgba(255, 255, 255, 0.08);
     --privacy-icon-color: #38BDF8;
     --success-circle-bg: rgba(24, 27, 37, 0.9);
@@ -254,11 +262,36 @@ body,
   padding: 0;
 }
 
+/* Canvas base colour: shows in overscroll areas and until the gradient layer below paints. */
+html {
+  background-color: var(--app-bg);
+}
+
 body {
   /*min-height: var(--tg-viewport-stable-height, 100dvh);*/
   min-height: 100dvh;
+}
+
+/* The page gradient lives on its own fixed layer instead of `background-attachment: fixed`:
+   that is ignored by iOS Safari (the gradient then stretches over the whole document and scrolls
+   with it) and makes Android Chrome repaint the gradient while scrolling. A fixed, composited
+   layer is painted once and simply stays put.
+
+   Performance note: there is deliberately no `backdrop-filter` anywhere. Everything behind the
+   translucent surfaces (cards, pills, round buttons) is this smooth gradient, so the blur changed
+   nothing visible (checked by pixel comparison) but cost compositor time on every repaint:
+   the blinking caret, typing and scrolling. */
+body::before {
+  content: "";
+  position: fixed;
+  /* explicit offsets instead of `inset`: unsupported before iOS 14.1, and a missing layer would mean no background at all */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
   background: var(--body-bg-gradient);
-  background-attachment: fixed;
+  pointer-events: none;
 }
 
 button,
@@ -311,6 +344,14 @@ button {
   outline-offset: 3px;
 }
 
+/* Non-interactive elements we focus from script (screen heading, skip-link target):
+   focus is moved there for assistive tech, a visible ring would just be noise. */
+main[tabindex="-1"]:focus,
+section[tabindex="-1"]:focus,
+h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
 /* App Container */
 .app-shell {
   display: flex;
@@ -355,7 +396,6 @@ button {
   font-size: 19px;
   font-family: var(--font-sans);
   cursor: pointer;
-  backdrop-filter: blur(10px);
   transition: background-color 0.15s, transform 0.15s, border-color 0.15s;
 }
 
@@ -392,7 +432,6 @@ button {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  backdrop-filter: blur(10px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
   cursor: default;
 }
@@ -555,7 +594,6 @@ button {
   background: var(--role-btn-bg);
   border: 1px solid var(--role-btn-border);
   box-shadow: var(--role-btn-shadow);
-  backdrop-filter: blur(14px);
   display: grid;
   place-items: center;
   color: var(--app-text);
@@ -645,7 +683,7 @@ button {
 
   .form-screen.keyboard-open .smart-textarea-card textarea {
     min-height: 85px;
-    font-size: 15px;
+    font-size: 16px;
   }
 
   .form-screen.keyboard-open .textarea-counters-row {
@@ -675,15 +713,8 @@ button {
   margin-bottom: 6px;
 }
 
-:root[data-theme="dark"] .form-role-icon,
-.theme-dark .form-role-icon {
+:root[data-theme="dark"] .form-role-icon {
   color: #F97316;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .form-role-icon {
-    color: #F97316;
-  }
 }
 
 .form-serif-title,
@@ -721,11 +752,16 @@ button {
 
 /* Smart Textarea Card */
 .smart-textarea-card {
+  /* Own compositing layer + layout boundary. The caret blinks and every keystroke repaints this
+     card. Without a layer of its own (backdrop-filter used to provide one by accident) that
+     re-rasterizes a large part of the page; measured, ~3x more raster work while typing.
+     `contain: layout` keeps text edits in here from re-laying out the rest of the page. */
+  will-change: transform;
+  contain: layout;
   background: var(--app-card-bg);
   border: 1px solid var(--app-card-border);
   border-radius: 22px;
   padding: 18px 18px 14px;
-  backdrop-filter: blur(20px);
   box-shadow: var(--app-card-shadow);
   display: flex;
   flex-direction: column;
@@ -737,17 +773,9 @@ button {
   border-color: var(--app-focus);
 }
 
-:root[data-theme="dark"] .smart-textarea-card:focus-within,
-.theme-dark .smart-textarea-card:focus-within {
+:root[data-theme="dark"] .smart-textarea-card:focus-within {
   border-color: rgba(249, 115, 22, 0.55);
   box-shadow: 0 14px 38px rgba(0, 0, 0, 0.5), 0 0 24px rgba(249, 115, 22, 0.18);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .smart-textarea-card:focus-within {
-    border-color: rgba(249, 115, 22, 0.55);
-    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.5), 0 0 24px rgba(249, 115, 22, 0.18);
-  }
 }
 
 .smart-textarea-card textarea {
@@ -757,7 +785,8 @@ button {
   background: transparent;
   resize: none;
   font-family: var(--font-sans);
-  font-size: 15px;
+  /* >= 16px: smaller text makes iOS zoom the page when the field gets focus */
+  font-size: 16px;
   font-weight: 400;
   line-height: 1.6;
   color: var(--app-text);
@@ -770,6 +799,17 @@ button {
   white-space: pre-line;
   font-family: var(--font-sans);
   font-style: normal;
+}
+
+.textarea-limit-note {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-danger);
+}
+
+.textarea-limit-note:not(:empty) {
+  margin-top: 8px;
 }
 
 .textarea-counters-row {
@@ -789,6 +829,14 @@ button {
   font-size: 13px;
   font-weight: 600;
   margin: -10px 0 16px 4px;
+}
+
+/* Error message on the account screen (e.g. failed withdraw) */
+.account-error-text {
+  color: var(--app-danger);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 14px 4px;
 }
 
 /* Wide Pill CTA Button: Tap target 52px */
@@ -813,11 +861,13 @@ button {
   transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
 }
 
-.pill-cta-btn:active:not(:disabled) {
+.pill-cta-btn:active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(0.98);
 }
 
-.pill-cta-btn:disabled {
+/* aria-disabled (not `disabled`) while busy, so keyboard / screen-reader focus isn't dropped */
+.pill-cta-btn:disabled,
+.pill-cta-btn[aria-disabled="true"] {
   opacity: 0.7;
   cursor: not-allowed;
 }
@@ -939,7 +989,6 @@ button {
   font-weight: 600;
   color: var(--app-text);
   box-shadow: var(--city-capsule-shadow);
-  backdrop-filter: blur(10px);
 }
 
 /* =========================================================
@@ -1019,7 +1068,6 @@ button {
   background: var(--header-btn-bg);
   color: var(--app-text);
   cursor: pointer;
-  backdrop-filter: blur(10px);
   transition: background-color 0.15s, transform 0.15s, border-color 0.15s;
 }
 
@@ -1075,7 +1123,6 @@ button {
   border-radius: 9999px;
   padding: 4px;
   margin-bottom: 22px;
-  backdrop-filter: blur(14px);
   box-shadow: var(--app-card-shadow);
 }
 
@@ -1085,7 +1132,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 42px;
+  min-height: 44px;
   padding: 8px 16px;
   border-radius: 9999px;
   border: none;
@@ -1108,22 +1155,13 @@ button {
   box-shadow: var(--app-pill-shadow);
 }
 
-:root[data-theme="dark"] .segmented-tab-item.active,
-.theme-dark .segmented-tab-item.active {
+:root[data-theme="dark"] .segmented-tab-item.active {
   background: linear-gradient(135deg, #F97316 0%, #F43F5E 100%);
-  color: #FFFFFF;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .segmented-tab-item.active {
-    background: linear-gradient(135deg, #F97316 0%, #F43F5E 100%);
-    color: #FFFFFF;
-  }
+  color: var(--app-pill-text);
 }
 
 .segmented-tab-count {
   font-size: 12px;
-  opacity: 0.8;
   font-weight: 500;
 }
 
@@ -1149,17 +1187,9 @@ button {
   contain: layout style;
 }
 
-:root[data-theme="dark"] .application-card,
-.theme-dark .application-card {
+:root[data-theme="dark"] .application-card {
   background: #181E2B;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .application-card {
-    background: #181E2B;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  }
 }
 
 .application-card-header {
@@ -1200,7 +1230,7 @@ button {
 
 .status-badge--withdrawn {
   background: rgba(244, 63, 94, 0.1);
-  color: #E11D48;
+  color: #BE123C;
   border: 1px solid rgba(244, 63, 94, 0.2);
 }
 
@@ -1218,75 +1248,38 @@ button {
 
 .status-badge--archived {
   background: rgba(148, 163, 184, 0.14);
-  color: #64748B;
+  color: #5B6B80;
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
-:root[data-theme="dark"] .status-badge--active,
-.theme-dark .status-badge--active {
+:root[data-theme="dark"] .status-badge--active {
   background: rgba(16, 185, 129, 0.22);
   color: #34D399;
   border-color: rgba(52, 211, 153, 0.3);
 }
 
-:root[data-theme="dark"] .status-badge--withdrawn,
-.theme-dark .status-badge--withdrawn {
+:root[data-theme="dark"] .status-badge--withdrawn {
   background: rgba(244, 63, 94, 0.2);
   color: #FB7185;
   border-color: rgba(251, 113, 133, 0.3);
 }
 
-:root[data-theme="dark"] .status-badge--expired,
-.theme-dark .status-badge--expired {
+:root[data-theme="dark"] .status-badge--expired {
   background: rgba(148, 163, 184, 0.18);
   color: #94A3B8;
   border-color: rgba(148, 163, 184, 0.25);
 }
 
-:root[data-theme="dark"] .status-badge--in_progress,
-.theme-dark .status-badge--in_progress {
+:root[data-theme="dark"] .status-badge--in_progress {
   background: rgba(148, 163, 184, 0.18);
   color: #CBD5E1;
   border-color: rgba(203, 213, 225, 0.25);
 }
 
-:root[data-theme="dark"] .status-badge--archived,
-.theme-dark .status-badge--archived {
+:root[data-theme="dark"] .status-badge--archived {
   background: rgba(148, 163, 184, 0.18);
   color: #94A3B8;
   border-color: rgba(148, 163, 184, 0.25);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .status-badge--active {
-    background: rgba(16, 185, 129, 0.22);
-    color: #34D399;
-    border-color: rgba(52, 211, 153, 0.3);
-  }
-
-  :root:not([data-theme="light"]) .status-badge--withdrawn {
-    background: rgba(244, 63, 94, 0.2);
-    color: #FB7185;
-    border-color: rgba(251, 113, 133, 0.3);
-  }
-
-  :root:not([data-theme="light"]) .status-badge--expired {
-    background: rgba(148, 163, 184, 0.18);
-    color: #94A3B8;
-    border-color: rgba(148, 163, 184, 0.25);
-  }
-
-  :root:not([data-theme="light"]) .status-badge--in_progress {
-    background: rgba(148, 163, 184, 0.18);
-    color: #CBD5E1;
-    border-color: rgba(203, 213, 225, 0.25);
-  }
-
-  :root:not([data-theme="light"]) .status-badge--archived {
-    background: rgba(148, 163, 184, 0.18);
-    color: #94A3B8;
-    border-color: rgba(148, 163, 184, 0.25);
-  }
 }
 
 /* Card Footer */
@@ -1322,6 +1315,17 @@ button {
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.15s, background-color 0.15s, opacity 0.15s;
+  position: relative;
+}
+
+/* Visually unchanged pill, but a >= 44px tall touch target for a destructive action */
+.card-delete-btn::after {
+  content: "";
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  bottom: -8px;
+  left: -4px;
 }
 
 .card-delete-btn:hover:not(:disabled) {
@@ -1426,8 +1430,7 @@ button {
   color: #0284c7;
 }
 
-:root[data-theme="dark"] .subscription-banner-icon,
-.theme-dark .subscription-banner-icon {
+:root[data-theme="dark"] .subscription-banner-icon {
   color: #38bdf8;
 }
 
@@ -1444,8 +1447,8 @@ button {
 
 .subscription-banner-hint {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(59, 130, 246, 0.08);
@@ -1456,10 +1459,29 @@ button {
   text-align: left;
 }
 
-.subscription-hint-arrow {
+.subscription-hint-arrow-wrap {
   flex-shrink: 0;
-  margin-top: 2px;
-  color: #3b82f6;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  display: grid;
+  place-items: center;
+}
+
+:root[data-theme="dark"] .subscription-hint-arrow-wrap {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.subscription-hint-arrow {
+  color: #2563eb;
+  animation: swipeDownBounce 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+:root[data-theme="dark"] .subscription-hint-arrow {
+  color: #38bdf8;
 }
 
 .subscription-channel-link {
@@ -1471,18 +1493,18 @@ button {
   border-radius: 12px;
   border: 1px solid rgba(59, 130, 246, 0.3);
   background: rgba(59, 130, 246, 0.1);
-  color: #2563eb;
+  color: #1d4ed8;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s;
   text-decoration: none;
   width: 100%;
+  min-height: 44px;
   box-sizing: border-box;
 }
 
-:root[data-theme="dark"] .subscription-channel-link,
-.theme-dark .subscription-channel-link {
+:root[data-theme="dark"] .subscription-channel-link {
   background: rgba(56, 189, 248, 0.12);
   border-color: rgba(56, 189, 248, 0.35);
   color: #38bdf8;
@@ -1492,8 +1514,7 @@ button {
   background: rgba(59, 130, 246, 0.18);
 }
 
-:root[data-theme="dark"] .subscription-channel-link:hover,
-.theme-dark .subscription-channel-link:hover {
+:root[data-theme="dark"] .subscription-channel-link:hover {
   background: rgba(56, 189, 248, 0.2);
 }
 
@@ -1527,6 +1548,15 @@ button {
   }
 }
 
+@keyframes swipeDownBounce {
+  0%, 100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
 /* =========================================================
    Reduced Motion (a11y)
    ========================================================= */
@@ -1540,11 +1570,11 @@ button {
     animation-iteration-count: 1 !important;
   }
 
-  .card-layer-1,
-  .card-layer-2,
-  .card-layer-top,
-  .subscription-inline-banner {
-    transform: none !important;
+  /* Continuous / entrance motion is dropped entirely (the element simply ends up
+     in its final state). Do NOT reset `transform` here: .card-layer-* use it for
+     their static fanned layout, which is not motion. */
+  .subscription-inline-banner,
+  .subscription-hint-arrow {
     animation: none !important;
   }
 }

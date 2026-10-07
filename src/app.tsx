@@ -19,21 +19,28 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   ApiError,
+  checkSubscription,
   fetchMyApplications,
   getUserFacingApiError,
   submitPublishRequest,
   withdrawApplication,
+  type ApiErrorKind,
   type ApplicationSummary,
   type DirectionHint,
 } from "./api";
+import { useKeyboardInset } from "./useKeyboardInset";
 import {
   createIdempotencyKey,
   getInitData,
@@ -47,6 +54,51 @@ import {
 
 const MIN_TEXT_LENGTH = 10;
 const MAX_TEXT_LENGTH = 4000;
+const DEFAULT_CHANNEL_URL = "https://t.me/RealtyMatch";
+
+/** Skip-link target: the screen's content section, i.e. right after the header. */
+const SCREEN_CONTENT_ID = "screen-content";
+
+const APPS_TABS = ["active", "archive"] as const;
+type AppsTab = (typeof APPS_TABS)[number];
+const appsTabId = (tab: AppsTab) => `apps-tab-${tab}`;
+const APPS_TABPANEL_ID = "apps-tabpanel";
+
+function skipToContent(event: ReactMouseEvent<HTMLAnchorElement>) {
+  // Never let the browser follow the "#..." link: Telegram keeps its launch
+  // params (tgWebAppData, ...) in location.hash.
+  event.preventDefault();
+  document.getElementById(SCREEN_CONTENT_ID)?.focus();
+}
+
+type ColorScheme = "light" | "dark";
+
+// Only used if the CSS variable can't be read (e.g. unsupported value format).
+const THEME_FALLBACK_BG: Record<ColorScheme, string> = { light: "#f8f6f2", dark: "#0F131C" };
+
+/**
+ * The colour the page background is actually painted with (`--app-bg` is the
+ * base layer of the body gradient). Telegram's header/background are set from
+ * it so they can't drift from the CSS, nor from the user's Telegram theme.
+ */
+function readAppBackgroundColor(scheme: ColorScheme): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--app-bg").trim();
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : THEME_FALLBACK_BG[scheme];
+}
+
+const WITHDRAW_FALLBACK_ERROR = "Не удалось отписаться от заявки. Попробуйте ещё раз.";
+// Only these error kinds have a message that makes sense for a withdraw action;
+// everything else (e.g. request_failed) would read "не удалось отправить заявку".
+const WITHDRAW_ERROR_KINDS_WITH_OWN_MESSAGE: ReadonlySet<ApiErrorKind> = new Set<ApiErrorKind>([
+  "timeout",
+  "network_error",
+]);
+
+function getWithdrawErrorMessage(error: unknown): string {
+  return error instanceof ApiError && WITHDRAW_ERROR_KINDS_WITH_OWN_MESSAGE.has(error.kind)
+    ? getUserFacingApiError(error)
+    : WITHDRAW_FALLBACK_ERROR;
+}
 
 interface AppProps {
   webApp: TelegramWebApp | null;
@@ -128,6 +180,68 @@ function formatDate(dateString: string): string {
   }
 }
 
+type ApplicationsState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; items: ApplicationSummary[] };
+
+// Stable reference so memoized selectors don't recompute while there is no data.
+const EMPTY_APPLICATIONS: ApplicationSummary[] = [];
+
+interface SubmitOptions {
+  /** Idempotency key to use; defaults to the current one. */
+  requestKey?: string;
+  /**
+   * Set when we are re-trying after `subscription_required`:
+   *  - "manual": user tapped "Я подписался" (show the warning if still not subscribed)
+   *  - "auto":   user returned to the Mini App (stay silent if still not subscribed)
+   */
+  recheck?: "manual" | "auto";
+}
+
+const KNOWN_STATUSES = ["active", "withdrawn", "expired", "archived", "in_progress"] as const;
+type KnownStatus = (typeof KNOWN_STATUSES)[number];
+type EffectiveStatus = KnownStatus | "unknown";
+
+interface StatusMeta {
+  label: string;
+  className: string;
+  tab: "active" | "archive";
+  canWithdraw: boolean;
+}
+
+// Single source of truth for how an application is labelled, which tab it lives
+// in and whether it can be withdrawn. Card and tabs must never disagree.
+const STATUS_META: Record<EffectiveStatus, StatusMeta> = {
+  active: { label: "Активна", className: "status-badge--active", tab: "active", canWithdraw: true },
+  withdrawn: { label: "Отозвана", className: "status-badge--withdrawn", tab: "archive", canWithdraw: false },
+  expired: { label: "Истекла", className: "status-badge--expired", tab: "archive", canWithdraw: false },
+  archived: { label: "В архиве", className: "status-badge--archived", tab: "archive", canWithdraw: false },
+  // NOTE: "in_progress" has always been shown in the archive tab; kept as is.
+  in_progress: { label: "В работе", className: "status-badge--in_progress", tab: "archive", canWithdraw: false },
+  // Unknown (e.g. newly introduced) statuses must not masquerade as "active".
+  unknown: { label: "Статус неизвестен", className: "status-badge--archived", tab: "archive", canWithdraw: false },
+};
+
+function isKnownStatus(value: unknown): value is KnownStatus {
+  return typeof value === "string" && (KNOWN_STATUSES as readonly string[]).includes(value);
+}
+
+function getEffectiveStatus(app: ApplicationSummary): EffectiveStatus {
+  if (app.status) {
+    return isKnownStatus(app.status) ? app.status : "unknown";
+  }
+
+  // Legacy payloads without `status`: derive it from leads. An application
+  // with no leads yet is new, hence active; otherwise it is active while at
+  // least one lead is. It is never dropped from both tabs.
+  const leads = app.leads ?? [];
+  const hasActiveLead = leads.some(
+    (lead) => lead.status === "active" || lead.lifecycle_status === "active",
+  );
+  return leads.length === 0 || hasActiveLead ? "active" : "archived";
+}
+
 interface ApplicationCardProps {
   app: ApplicationSummary;
   isWithdrawing: boolean;
@@ -140,54 +254,40 @@ const ApplicationCard = memo(function ApplicationCard({
   onWithdraw,
 }: ApplicationCardProps) {
   const dateStr = formatDate(app.created_at);
-
-  let statusLabel = "Активна";
-  let statusClass = "status-badge--active";
-
-  if (app.status === "withdrawn") {
-    statusLabel = "Отозвана";
-    statusClass = "status-badge--withdrawn";
-  } else if (app.status === "expired") {
-    statusLabel = "Истекла";
-    statusClass = "status-badge--expired";
-  } else if (app.status === "archived") {
-    statusLabel = "В архиве";
-    statusClass = "status-badge--archived";
-  } else if (app.status === "in_progress") {
-    statusLabel = "В работе";
-    statusClass = "status-badge--in_progress";
-  }
-
-  const isActive = !app.status || app.status === "active";
+  const meta = STATUS_META[getEffectiveStatus(app)];
 
   return (
-    <article className="application-card" role="listitem">
-      <div className="application-card-header">
-        <span className={`status-badge ${statusClass}`}>{statusLabel}</span>
-      </div>
-
-      <p className="application-card-text">{app.text}</p>
-
-      <div className="application-card-footer">
-        <div className="application-card-date">
-          <Calendar className="app-icon app-icon--xs" />
-          <span>{dateStr}</span>
+    <div role="listitem">
+      <article className="application-card">
+        <div className="application-card-header">
+          <span className={`status-badge ${meta.className}`}>{meta.label}</span>
         </div>
 
-        {isActive && (
-          <button
-            type="button"
-            className="card-delete-btn"
-            disabled={isWithdrawing}
-            onClick={() => void onWithdraw(app.submission_id)}
-            aria-label="Отписаться от заявки"
-          >
-            <Trash2 className="app-icon app-icon--xs" />
-            <span>{isWithdrawing ? "Отписываемся..." : "Отписаться"}</span>
-          </button>
-        )}
-      </div>
-    </article>
+        <p className="application-card-text">{app.text}</p>
+
+        <div className="application-card-footer">
+          <div className="application-card-date">
+            <Calendar className="app-icon app-icon--xs" />
+            <span>{dateStr}</span>
+          </div>
+
+          {meta.canWithdraw && (
+            <button
+              type="button"
+              className="card-delete-btn"
+              disabled={isWithdrawing}
+              onClick={() => void onWithdraw(app.submission_id)}
+              aria-label={
+                isWithdrawing ? "Отписываемся от заявки…" : `Отписаться от заявки от ${dateStr}`
+              }
+            >
+              <Trash2 className="app-icon app-icon--xs" />
+              <span>{isWithdrawing ? "Отписываемся..." : "Отписаться"}</span>
+            </button>
+          )}
+        </div>
+      </article>
+    </div>
   );
 });
 
@@ -198,54 +298,83 @@ function App({ webApp: initialWebApp }: AppProps) {
   const [error, setError] = useState<string | null>(null);
   const [retryNeedsNewIdempotencyKey, setRetryNeedsNewIdempotencyKey] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [textTruncated, setTextTruncated] = useState(false);
 
   // My Applications state
-  const [applications, setApplications] = useState<ApplicationSummary[]>([]);
-  const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
-  const [loadingApps, setLoadingApps] = useState(false);
+  // Starts as "loading": entering the screen goes through openAccount(), which
+  // also resets it, so the empty state is never flashed before the fetch starts.
+  const [appsState, setAppsState] = useState<ApplicationsState>({ status: "loading" });
+  const [appsReloadToken, setAppsReloadToken] = useState(0);
+  const [activeTab, setActiveTab] = useState<AppsTab>("active");
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
 
   // Inline subscription banner state (replaces modal popup)
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
-  const [subscriptionChannelUrl, setSubscriptionChannelUrl] = useState("https://t.me/RealtyMatch");
+  const [subscriptionChannelUrl, setSubscriptionChannelUrl] = useState(DEFAULT_CHANNEL_URL);
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(false);
   const [subscriptionCheckFailed, setSubscriptionCheckFailed] = useState(false);
 
+  const submitInFlightRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
   const bottomAnchorRef = useRef<HTMLDivElement | null>(null);
-  const formScreenRef = useRef<HTMLElement | null>(null);
 
   const activeWebApp = getTelegramWebApp() ?? initialWebApp;
+
+  // Do not call webApp.expand() anywhere: Telegram should control the native
+  // bottom sheet itself so the user can minimize it with a vertical swipe.
+  const { isKeyboardOpen, keyboardHeight, handleTextareaFocus, handleTextareaBlur, dismissKeyboard } =
+    useKeyboardInset({
+      active: screen === "form",
+      resetKey: screen,
+      webApp: activeWebApp,
+      textareaRef,
+      submitButtonRef,
+      bottomAnchorRef,
+    });
   const initData = getInitData(activeWebApp);
   const isInsideTelegram = initData.length > 0;
   const startParam = getStartParam(activeWebApp);
 
+  const charCount = countUnicodeCharacters(text);
+  const tagCount = countTags(text);
+  const isSubmitBusy = screen === "submitting" || isCheckingSubscription;
+
   // Detect whether the Mini App was opened from the channel itself
   const isFromChannel = activeWebApp?.initDataUnsafe?.chat_type === "channel";
 
-  const [theme, setTheme] = useState<"light" | "dark">(() =>
-    getTelegramColorScheme(activeWebApp),
-  );
-
-  // Fetch applications when entering the My Applications screen
+  // Fetch applications when entering the My Applications screen (or on retry).
+  // `cancelled` guards against stale responses after leaving the screen.
   useEffect(() => {
-    if (screen === "account") {
-      setLoadingApps(true);
-      fetchMyApplications(initData)
-        .then((res) => {
-          setApplications(res.applications || []);
-        })
-        .catch(() => {
-          setApplications([]);
-        })
-        .finally(() => {
-          setLoadingApps(false);
-        });
+    if (screen !== "account") {
+      return;
     }
-  }, [screen, initData]);
+
+    let cancelled = false;
+    fetchMyApplications(initData)
+      .then((res) => {
+        if (cancelled) {
+          return;
+        }
+        // fetchMyApplications never rejects: HTTP/network failures are reported
+        // as { success: false }, which must not be shown as "no applications".
+        setAppsState(
+          res.success
+            ? { status: "ready", items: res.applications ?? [] }
+            : { status: "error" },
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAppsState({ status: "error" });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, initData, appsReloadToken]);
 
   const tgUser = useMemo(() => activeWebApp?.initDataUnsafe?.user, [activeWebApp]);
   const userName = useMemo(() => {
@@ -257,29 +386,16 @@ function App({ webApp: initialWebApp }: AppProps) {
       : null;
   }, [tgUser]);
 
+  const applications = appsState.status === "ready" ? appsState.items : EMPTY_APPLICATIONS;
+
   const activeApps = useMemo(
-    () =>
-      applications.filter(
-        (app) =>
-          app.status === "active" ||
-          (!app.status &&
-            app.leads.some(
-              (l) => l.status === "active" || l.lifecycle_status === "active"
-            ))
-      ),
-    [applications]
+    () => applications.filter((app) => STATUS_META[getEffectiveStatus(app)].tab === "active"),
+    [applications],
   );
 
   const archivedApps = useMemo(
-    () =>
-      applications.filter(
-        (app) =>
-          app.status === "withdrawn" ||
-          app.status === "expired" ||
-          app.status === "archived" ||
-          app.status === "in_progress"
-      ),
-    [applications]
+    () => applications.filter((app) => STATUS_META[getEffectiveStatus(app)].tab === "archive"),
+    [applications],
   );
 
   const displayedApps = activeTab === "active" ? activeApps : archivedApps;
@@ -287,18 +403,26 @@ function App({ webApp: initialWebApp }: AppProps) {
   const handleWithdraw = useCallback(async (submissionId: string) => {
     const confirmMsg = "Отписаться от этой заявки?\nВы больше не будете получать по ней предложения.";
     const doWithdraw = async () => {
+      setAccountError(null);
       setWithdrawingId(submissionId);
       try {
         await withdrawApplication(initData, submissionId);
-        setApplications((prev) =>
-          prev.map((item) =>
-            item.submission_id === submissionId
-              ? { ...item, status: "withdrawn" }
-              : item
-          )
+        setAppsState((prev) =>
+          prev.status === "ready"
+            ? {
+                status: "ready",
+                items: prev.items.map((item) =>
+                  item.submission_id === submissionId
+                    ? { ...item, status: "withdrawn" }
+                    : item,
+                ),
+              }
+            : prev,
         );
       } catch (err) {
-        setError(getUserFacingApiError(err));
+        // `error` is only rendered on the form/error screens, so use a
+        // dedicated message that is visible on the account screen.
+        setAccountError(getWithdrawErrorMessage(err));
       } finally {
         setWithdrawingId(null);
       }
@@ -317,30 +441,20 @@ function App({ webApp: initialWebApp }: AppProps) {
     }
   }, [activeWebApp, initData]);
 
-  // Sync theme with Telegram WebApp and system preference
-  useEffect(() => {
+  // Sync theme with Telegram WebApp and system preference.
+  // Layout effect: data-theme must be set before the first paint of React content.
+  // The attribute is the single source of truth for CSS (no extra theme classes).
+  useLayoutEffect(() => {
     const updateTheme = () => {
-      const activeTheme = getTelegramColorScheme(activeWebApp);
-      setTheme(activeTheme);
-      document.documentElement.dataset.theme = activeTheme;
-      if (activeTheme === "dark") {
-        document.documentElement.classList.add("theme-dark");
-        document.documentElement.classList.remove("theme-light");
-        try {
-          activeWebApp?.setHeaderColor?.("#0F131C");
-          activeWebApp?.setBackgroundColor?.("#0F131C");
-        } catch {
-          // Ignore if Telegram API throws in unsupported client
-        }
-      } else {
-        document.documentElement.classList.add("theme-light");
-        document.documentElement.classList.remove("theme-dark");
-        try {
-          activeWebApp?.setHeaderColor?.("#f8f6f2");
-          activeWebApp?.setBackgroundColor?.("#f8f6f2");
-        } catch {
-          // Ignore if Telegram API throws in unsupported client
-        }
+      const scheme = getTelegramColorScheme(activeWebApp);
+      document.documentElement.dataset.theme = scheme;
+
+      const color = readAppBackgroundColor(scheme);
+      try {
+        activeWebApp?.setHeaderColor?.(color);
+        activeWebApp?.setBackgroundColor?.(color);
+      } catch {
+        // Ignore if Telegram API throws in unsupported client
       }
     };
 
@@ -364,27 +478,50 @@ function App({ webApp: initialWebApp }: AppProps) {
     };
   }, [activeWebApp]);
 
-  // Smoothly scroll the page so the submit button is positioned nicely above the keyboard with bottom margin
-  const scrollToSubmitButton = (immediate = false) => {
-    const doScroll = () => {
-      const target = bottomAnchorRef.current ?? submitButtonRef.current;
-      if (target) {
-        target.scrollIntoView({
-          behavior: immediate ? "auto" : "smooth",
-          block: "nearest",
-        });
-      }
-    };
-
-    if (immediate) {
-      doScroll();
-    } else {
-      // Execute with staggered delays to follow the iOS keyboard animation
-      setTimeout(doScroll, 80);
-      setTimeout(doScroll, 200);
-      setTimeout(doScroll, 350);
+  // Keyboard support for the tabs (WAI-ARIA tabs pattern, automatic activation).
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const current = APPS_TABS.indexOf(activeTab);
+    let next: number;
+    switch (event.key) {
+      case "ArrowRight":
+        next = (current + 1) % APPS_TABS.length;
+        break;
+      case "ArrowLeft":
+        next = (current - 1 + APPS_TABS.length) % APPS_TABS.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = APPS_TABS.length - 1;
+        break;
+      default:
+        return;
     }
-  };
+    event.preventDefault();
+    setActiveTab(APPS_TABS[next]);
+    document.getElementById(appsTabId(APPS_TABS[next]))?.focus();
+  }
+
+  // Move focus to the new screen's heading, so screen-reader and keyboard users land
+  // at the top of the new content instead of on a button that no longer exists.
+  // Skipped on first render and while the form cycles form <-> submitting (the form stays
+  // mounted there and the user's focus is on the submit button).
+  const previousScreenRef = useRef<Screen>(screen);
+  useEffect(() => {
+    const previous = previousScreenRef.current;
+    previousScreenRef.current = screen;
+    if (previous === screen) {
+      return;
+    }
+    const staysOnForm =
+      (previous === "form" || previous === "submitting") &&
+      (screen === "form" || screen === "submitting");
+    if (staysOnForm) {
+      return;
+    }
+    document.querySelector<HTMLElement>("main h1")?.focus({ preventScroll: true });
+  }, [screen]);
 
   // Telegram Native BackButton integration
   useEffect(() => {
@@ -421,76 +558,10 @@ function App({ webApp: initialWebApp }: AppProps) {
     }
   }, [text, screen, activeWebApp]);
 
-  // Handle focus and viewport adjustments when entering the form screen.
-  //
-  // IMPORTANT:
-  // Do not call webApp.expand() here.
-  // Telegram should control the native Bottom Sheet state itself,
-  // allowing the user to minimize it with a vertical swipe.
-  useEffect(() => {
-    if (screen === "form") {
-      const timer = setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus({ preventScroll: true });
-          syncKeyboardState();
-          scrollToSubmitButton();
-        }
-      }, 70);
-
-      return () => clearTimeout(timer);
-    }
-
-    setIsKeyboardOpen(false);
-    setKeyboardHeight(0);
-  }, [screen, activeWebApp]);
-
-  // Track window.visualViewport changes (essential for iOS Safari and Chrome mobile, only on form screen)
-  useEffect(() => {
-    if (screen !== "form") {
-      return;
-    }
-
-    if (typeof window === "undefined" || !window.visualViewport) {
-      return;
-    }
-
-    const vv = window.visualViewport;
-    const handleViewportChange = () => {
-      syncKeyboardState();
-    };
-
-    vv.addEventListener("resize", handleViewportChange, { passive: true });
-    vv.addEventListener("scroll", handleViewportChange, { passive: true });
-    handleViewportChange();
-    return () => {
-      vv.removeEventListener("resize", handleViewportChange);
-      vv.removeEventListener("scroll", handleViewportChange);
-    };
-  }, [screen]);
-
-  // Telegram native viewportChanged event listener (only on form screen)
-  useEffect(() => {
-    if (screen !== "form") {
-      return;
-    }
-
-    if (!activeWebApp?.onEvent) {
-      return;
-    }
-
-    const handleTgViewport = () => {
-      scrollToSubmitButton();
-    };
-
-    activeWebApp.onEvent("viewportChanged", handleTgViewport);
-    return () => {
-      activeWebApp.offEvent?.("viewportChanged", handleTgViewport);
-    };
-  }, [screen, activeWebApp]);
-
   function chooseDirection(nextDirection: DirectionHint) {
     if (direction !== null && direction !== nextDirection) {
       setText("");
+      setTextTruncated(false);
     }
     setDirection(nextDirection);
     setScreen("form");
@@ -499,26 +570,20 @@ function App({ webApp: initialWebApp }: AppProps) {
     setIdempotencyKey(createIdempotencyKey());
   }
 
-  function syncKeyboardState() {
-    if (typeof window === "undefined" || !window.visualViewport) {
-      setIsKeyboardOpen(false);
-      setKeyboardHeight(0);
+  function handleSubmitButtonPress() {
+    // aria-disabled (not `disabled`) keeps focus on the button, so the click itself must be guarded.
+    if (isSubmitBusy) {
       return;
     }
-
-    const keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height);
-    const isKeyboardOpen = keyboardHeight > 80;
-    setIsKeyboardOpen(isKeyboardOpen);
-    setKeyboardHeight(isKeyboardOpen ? keyboardHeight : 0);
-
-    if (isKeyboardOpen) {
-      scrollToSubmitButton();
-    }
+    dismissKeyboard();
+    void performSubmit({ recheck: subscriptionRequired ? "manual" : undefined });
   }
 
   function handleTextChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const nextText = limitUnicodeCharacters(event.target.value, MAX_TEXT_LENGTH);
     setText(nextText);
+    // Pasting/typing past the limit silently cuts the text; tell the user (and screen readers).
+    setTextTruncated(nextText !== event.target.value);
     if (error) {
       setError(null);
     }
@@ -529,12 +594,27 @@ function App({ webApp: initialWebApp }: AppProps) {
     }
   }
 
+  function openAccount() {
+    setAccountError(null);
+    setAppsState({ status: "loading" });
+    setScreen("account");
+  }
+
+  function reloadApplications() {
+    setAccountError(null);
+    setAppsState({ status: "loading" });
+    setAppsReloadToken((token) => token + 1);
+  }
+
   function goBackToDirection() {
     if (screen === "submitting") {
       return;
     }
 
     setError(null);
+    setAccountError(null);
+    setSubscriptionRequired(false);
+    setSubscriptionCheckFailed(false);
     setRetryNeedsNewIdempotencyKey(false);
     setScreen("direction");
   }
@@ -553,17 +633,30 @@ function App({ webApp: initialWebApp }: AppProps) {
       setIdempotencyKey(requestKey);
     }
     setRetryNeedsNewIdempotencyKey(false);
-    void submitForm(requestKey);
+    void performSubmit({ requestKey });
   }
 
-  async function submitForm(requestKey = idempotencyKey) {
-    if (!direction) {
-      setScreen("direction");
+  // The one and only submit path (initial send, manual "Я подписался" and the
+  // silent re-check on return from the channel), so validation and guards can't diverge.
+  async function performSubmit({ requestKey = idempotencyKey, recheck }: SubmitOptions = {}) {
+    if (submitInFlightRef.current) {
       return;
     }
 
+    if (!direction) {
+      if (!recheck) {
+        setScreen("direction");
+      }
+      return;
+    }
+
+    // For the silent re-check we never surface validation problems: the user
+    // will see them on the next explicit tap.
     const validationError = getValidationError(text);
     if (validationError) {
+      if (recheck === "auto") {
+        return;
+      }
       setError(validationError);
       setScreen("form");
       return;
@@ -571,6 +664,9 @@ function App({ webApp: initialWebApp }: AppProps) {
 
     const currentInitData = getInitData(activeWebApp);
     if (!currentInitData) {
+      if (recheck === "auto") {
+        return;
+      }
       setError("Откройте приложение через Telegram и попробуйте ещё раз.");
       setScreen("error");
       return;
@@ -581,20 +677,47 @@ function App({ webApp: initialWebApp }: AppProps) {
     // launch path, while still rejecting an explicitly unexpected parameter.
     const effectiveStartParam = startParam ?? "publish";
     if (effectiveStartParam !== "publish") {
+      if (recheck === "auto") {
+        return;
+      }
       setError("Откройте приложение через кнопку «Подать заявку».");
       setScreen("error");
       return;
     }
 
+    submitInFlightRef.current = true;
     setError(null);
-    setScreen("submitting");
-
-    // Request write access so the bot can reliably send DM notifications.
-    // If permission was already given, Telegram proceeds silently without any modal.
-    // We ignore rejection so user can still submit even if declined or on desktop fallback.
-    await requestTelegramWriteAccess(activeWebApp);
+    if (recheck) {
+      setIsCheckingSubscription(true);
+      if (recheck === "manual") {
+        setSubscriptionCheckFailed(false);
+      }
+    } else {
+      setScreen("submitting");
+    }
 
     try {
+      if (recheck) {
+        // Cheap, side-effect-free probe first. Re-POSTing the whole submission just to
+        // learn that the user still hasn't subscribed would, on every return to the app,
+        // hit the publish endpoint and re-open the write-access dialog.
+        const subscription = await checkSubscription(currentInitData);
+        if (subscription.success && !subscription.is_subscribed) {
+          if (recheck === "manual") {
+            setSubscriptionCheckFailed(true);
+          }
+          setSubscriptionChannelUrl(subscription.channel_url);
+          return;
+        }
+        // Subscribed - or the probe itself failed (success: false). In both cases the
+        // publish request below is authoritative and surfaces any real problem.
+      }
+
+      // Request write access so the bot can reliably send DM notifications.
+      // If permission was already given, Telegram proceeds silently without any modal.
+      // requestTelegramWriteAccess never rejects and settles within its own timeout (telegram.ts).
+      await requestTelegramWriteAccess(activeWebApp);
+
       await submitPublishRequest(
         {
           init_data: currentInitData,
@@ -611,77 +734,61 @@ function App({ webApp: initialWebApp }: AppProps) {
       setScreen("success");
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.kind === "subscription_required") {
-        setSubscriptionChannelUrl(requestError.channelUrl || "https://t.me/RealtyMatch");
-        setSubscriptionRequired(true);
-        setSubscriptionCheckFailed(false);
-        setScreen("form");
+        if (recheck) {
+          if (recheck === "manual") {
+            setSubscriptionCheckFailed(true);
+          }
+        } else {
+          setSubscriptionChannelUrl(requestError.channelUrl || DEFAULT_CHANNEL_URL);
+          setSubscriptionRequired(true);
+          setSubscriptionCheckFailed(false);
+          setScreen("form");
+        }
         return;
       }
 
+      setSubscriptionRequired(false);
       setError(getUserFacingApiError(requestError));
       setRetryNeedsNewIdempotencyKey(
         requestError instanceof ApiError && requestError.kind === "idempotency_conflict",
       );
       setScreen("error");
-    }
-  }
-
-  async function handleVerifyAndSubmit() {
-    setIsCheckingSubscription(true);
-    setSubscriptionCheckFailed(false);
-
-    const currentInitData = initData || activeWebApp?.initData || "";
-    const effectiveStartParam = startParam ?? "publish";
-
-    try {
-      await submitPublishRequest(
-        {
-          init_data: currentInitData,
-          direction_hint: direction!,
-          text,
-          start_param: effectiveStartParam,
-        },
-        idempotencyKey,
-      );
-
-      activeWebApp?.disableClosingConfirmation?.();
-      setSubscriptionRequired(false);
-      setSubscriptionCheckFailed(false);
-      setScreen("success");
-    } catch (requestError) {
-      if (requestError instanceof ApiError && requestError.kind === "subscription_required") {
-        setSubscriptionCheckFailed(true);
-      } else {
-        setSubscriptionRequired(false);
-        setError(getUserFacingApiError(requestError));
-        setRetryNeedsNewIdempotencyKey(
-          requestError instanceof ApiError && requestError.kind === "idempotency_conflict",
-        );
-        setScreen("error");
-      }
     } finally {
-      setIsCheckingSubscription(false);
+      submitInFlightRef.current = false;
+      if (recheck) {
+        setIsCheckingSubscription(false);
+      }
     }
   }
 
-  // Auto-recheck subscription when user returns to the Mini App
-  // (e.g. after swiping down to subscribe in the channel)
+  // Always points at the latest performSubmit. Listeners registered once (like
+  // visibilitychange below) go through it, so they can never submit stale
+  // text / direction / idempotency key from an old render.
+  const submitRef = useRef(performSubmit);
+  useEffect(() => {
+    submitRef.current = performSubmit;
+  });
+
+  // Auto-recheck subscription silently when user returns to the Mini App
+  // (e.g. after swiping down to subscribe in the channel).
+  // If still not subscribed, we stay quiet and do NOT show the warning message
+  // until the user explicitly taps "Я подписался".
   useEffect(() => {
     if (!subscriptionRequired || screen !== "form") return;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && subscriptionRequired && !isCheckingSubscription) {
-        void handleVerifyAndSubmit();
+      if (document.visibilityState === "visible") {
+        void submitRef.current({ recheck: "auto" });
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [subscriptionRequired, screen, isCheckingSubscription]);
+  }, [subscriptionRequired, screen]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void submitForm();
+    handleSubmitButtonPress();
   }
 
   function closeApp() {
@@ -703,12 +810,12 @@ function App({ webApp: initialWebApp }: AppProps) {
   if (screen === "success") {
     return (
       <main id="main-content" className="app-shell" tabIndex={-1}>
-        <section className="success-screen" aria-live="polite" aria-labelledby="success-heading-title">
+        <section className="success-screen" aria-labelledby="success-heading-title">
           <div className="success-badge-circle" aria-hidden="true">
             <Check className="app-icon app-icon--xl" strokeWidth={2.8} />
           </div>
 
-          <h1 id="success-heading-title" className="success-title">Заявка принята!</h1>
+          <h1 id="success-heading-title" className="success-title" tabIndex={-1}>Заявка принята!</h1>
 
           <div className="success-description-block">
             <p>
@@ -753,12 +860,12 @@ function App({ webApp: initialWebApp }: AppProps) {
   if (screen === "error") {
     return (
       <main id="main-content" className="app-shell" tabIndex={-1}>
-        <section className="error-screen" role="alert" aria-live="assertive" aria-labelledby="error-heading-title">
+        <section className="error-screen" aria-labelledby="error-heading-title">
           <div className="error-badge-circle" aria-hidden="true">
             <AlertCircle className="app-icon app-icon--xl" />
           </div>
 
-          <h1 id="error-heading-title" className="error-title">Не получилось отправить</h1>
+          <h1 id="error-heading-title" className="error-title" tabIndex={-1}>Не получилось отправить</h1>
 
           <p className="error-description">
             {error ?? "Попробуйте ещё раз."}
@@ -793,12 +900,12 @@ function App({ webApp: initialWebApp }: AppProps) {
   if (screen === "account") {
     return (
       <main id="main-content" className="app-shell" tabIndex={-1}>
-        <a href="#main-content" className="skip-link">
+        <a href={`#${SCREEN_CONTENT_ID}`} className="skip-link" onClick={skipToContent}>
           Перейти к основному содержимому
         </a>
 
         {/* Top Header */}
-        <header className="app-header" role="banner">
+        <header className="app-header">
           <div className="brand-header-left">
             <button
               className="header-back-btn"
@@ -808,23 +915,22 @@ function App({ webApp: initialWebApp }: AppProps) {
             >
               <ChevronLeft className="app-icon app-icon--md" />
             </button>
-            <div className="brand-logo-text" aria-label="REALTY MATCH">
+            <div className="brand-logo-text">
               <span>REALTY</span>
               <span>MATCH</span>
             </div>
           </div>
 
           <div className="brand-header-right">
-            <span
-              className="location-selector-pill"
-              aria-label="Регион: Батуми, Грузия"
-            >
+            <span className="location-selector-pill">
+              <span className="visually-hidden">Регион: </span>
               <span>Батуми</span>
               {/*<ChevronDown className="app-icon app-icon--xs chevron-icon" />*/}
             </span>
 
             <button
               className="header-account-btn active"
+              aria-current="page"
               type="button"
               onClick={goBackToDirection}
               aria-label="Мои заявки и аккаунт"
@@ -835,7 +941,7 @@ function App({ webApp: initialWebApp }: AppProps) {
           </div>
         </header>
 
-        <section className="account-screen" aria-labelledby="my-apps-heading">
+        <section id={SCREEN_CONTENT_ID} tabIndex={-1} className="account-screen" aria-labelledby="my-apps-heading">
           <div className="my-apps-header-block">
             {userName && (
               <div className="user-profile-badge">
@@ -843,17 +949,25 @@ function App({ webApp: initialWebApp }: AppProps) {
                 <span>{userName}</span>
               </div>
             )}
-            <h1 id="my-apps-heading" className="my-apps-title">
+            <h1 id="my-apps-heading" className="my-apps-title" tabIndex={-1}>
               Мои заявки
             </h1>
           </div>
 
           {/* Segmented Control Tabs */}
-          <div className="segmented-tab-row" role="tablist" aria-label="Фильтр заявок">
+          <div
+            className="segmented-tab-row"
+            role="tablist"
+            aria-label="Фильтр заявок"
+            onKeyDown={handleTabKeyDown}
+          >
             <button
               type="button"
               role="tab"
+              id={appsTabId("active")}
               aria-selected={activeTab === "active"}
+              aria-controls={APPS_TABPANEL_ID}
+              tabIndex={activeTab === "active" ? 0 : -1}
               className={`segmented-tab-item ${activeTab === "active" ? "active" : ""}`}
               onClick={() => setActiveTab("active")}
             >
@@ -865,7 +979,10 @@ function App({ webApp: initialWebApp }: AppProps) {
             <button
               type="button"
               role="tab"
+              id={appsTabId("archive")}
               aria-selected={activeTab === "archive"}
+              aria-controls={APPS_TABPANEL_ID}
+              tabIndex={activeTab === "archive" ? 0 : -1}
               className={`segmented-tab-item ${activeTab === "archive" ? "active" : ""}`}
               onClick={() => setActiveTab("archive")}
             >
@@ -876,46 +993,72 @@ function App({ webApp: initialWebApp }: AppProps) {
             </button>
           </div>
 
-          {/* Applications List */}
-          {loadingApps ? (
-            <div className="empty-applications-card">
-              <p className="empty-applications-text">Загрузка ваших заявок...</p>
-            </div>
-          ) : displayedApps.length > 0 ? (
-            <div className="applications-list" role="list">
-              {displayedApps.map((app) => (
-                <ApplicationCard
-                  key={app.submission_id}
-                  app={app}
-                  isWithdrawing={withdrawingId === app.submission_id}
-                  onWithdraw={handleWithdraw}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="empty-applications-card">
-              <div className="empty-applications-icon" aria-hidden="true">
-                <Search className="app-icon app-icon--lg" />
-              </div>
-              <h2 className="empty-applications-title">
-                {activeTab === "active" ? "Нет активных заявок" : "Архив пуст"}
-              </h2>
-              <p className="empty-applications-text">
-                {activeTab === "active"
-                  ? "У вас пока нет активных заявок. Вы можете создать новую прямо сейчас."
-                  : "У вас пока нет архивных заявок."}
-              </p>
-              {activeTab === "active" && (
-                <button
-                  type="button"
-                  className="pill-cta-btn"
-                  onClick={() => setScreen("direction")}
-                >
-                  Подать заявку <ArrowRight className="app-icon app-icon--sm btn-arrow" />
-                </button>
-              )}
-            </div>
+          {accountError && (
+            <p className="account-error-text" role="alert">
+              {accountError}
+            </p>
           )}
+
+          {/* Applications List */}
+          <div
+            role="tabpanel"
+            id={APPS_TABPANEL_ID}
+            aria-labelledby={appsTabId(activeTab)}
+            tabIndex={0}
+          >
+            {appsState.status === "loading" ? (
+              <div className="empty-applications-card" role="status">
+                <p className="empty-applications-text">Загрузка ваших заявок...</p>
+              </div>
+            ) : appsState.status === "error" ? (
+              <div className="empty-applications-card" role="alert">
+                <div className="empty-applications-icon" aria-hidden="true">
+                  <AlertCircle className="app-icon app-icon--lg" />
+                </div>
+                <h2 className="empty-applications-title">Не удалось загрузить заявки</h2>
+                <p className="empty-applications-text">
+                  Проверьте соединение и попробуйте ещё раз.
+                </p>
+                <button type="button" className="pill-cta-btn" onClick={reloadApplications}>
+                  Повторить <ArrowRight className="app-icon app-icon--sm btn-arrow" />
+                </button>
+              </div>
+            ) : displayedApps.length > 0 ? (
+              <div className="applications-list" role="list">
+                {displayedApps.map((app) => (
+                  <ApplicationCard
+                    key={app.submission_id}
+                    app={app}
+                    isWithdrawing={withdrawingId === app.submission_id}
+                    onWithdraw={handleWithdraw}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-applications-card">
+                <div className="empty-applications-icon" aria-hidden="true">
+                  <Search className="app-icon app-icon--lg" />
+                </div>
+                <h2 className="empty-applications-title">
+                  {activeTab === "active" ? "Нет активных заявок" : "Архив пуст"}
+                </h2>
+                <p className="empty-applications-text">
+                  {activeTab === "active"
+                    ? "У вас пока нет активных заявок. Вы можете создать новую прямо сейчас."
+                    : "У вас пока нет архивных заявок."}
+                </p>
+                {activeTab === "active" && (
+                  <button
+                    type="button"
+                    className="pill-cta-btn"
+                    onClick={() => setScreen("direction")}
+                  >
+                    Подать заявку <ArrowRight className="app-icon app-icon--sm btn-arrow" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </section>
       </main>
     );
@@ -926,12 +1069,12 @@ function App({ webApp: initialWebApp }: AppProps) {
   // =========================================================
   return (
     <main id="main-content" className="app-shell" tabIndex={-1}>
-      <a href="#main-content" className="skip-link">
+      <a href={`#${SCREEN_CONTENT_ID}`} className="skip-link" onClick={skipToContent}>
         Перейти к основному содержимому
       </a>
 
       {/* Top Header */}
-      <header className="app-header" role="banner">
+      <header className="app-header">
         <div className="brand-header-left">
           {screen === "form" && (
             <button
@@ -943,17 +1086,15 @@ function App({ webApp: initialWebApp }: AppProps) {
               <ChevronLeft className="app-icon app-icon--md" />
             </button>
           )}
-          <div className="brand-logo-text" aria-label="REALTY MATCH">
+          <div className="brand-logo-text">
             <span>REALTY</span>
             <span>MATCH</span>
           </div>
         </div>
 
         <div className="brand-header-right">
-          <span
-            className="location-selector-pill"
-            aria-label="Регион: Батуми, Грузия"
-          >
+          <span className="location-selector-pill">
+            <span className="visually-hidden">Регион: </span>
             <span>Батуми</span>
             {/*<ChevronDown className="app-icon app-icon--xs chevron-icon" />*/}
           </span>
@@ -961,7 +1102,7 @@ function App({ webApp: initialWebApp }: AppProps) {
           <button
             className="header-account-btn"
             type="button"
-            onClick={() => setScreen("account")}
+            onClick={openAccount}
             aria-label="Мои заявки и аккаунт"
             title="Мои заявки"
           >
@@ -972,13 +1113,9 @@ function App({ webApp: initialWebApp }: AppProps) {
 
       {/* Screen 1: Welcome & Role Selection */}
       {screen === "direction" ? (
-        <section className="welcome-screen" aria-labelledby="welcome-hero-title">
+        <section id={SCREEN_CONTENT_ID} tabIndex={-1} className="welcome-screen" aria-labelledby="welcome-hero-title">
           {/* Card Deck: Fan of multiple cards (top card slightly askew) */}
-          <div
-            className="card-deck-container"
-            role="region"
-            aria-label="Галерея недвижимости Батуми"
-          >
+          <div className="card-deck-container">
             <div className="card-deck-fan">
               {/* Card 1: Bottom layer (rotated left) */}
               <div className="card-layer card-layer-1" aria-hidden="true">
@@ -1018,7 +1155,7 @@ function App({ webApp: initialWebApp }: AppProps) {
           </div>
 
           {/* Typography */}
-          <h1 id="welcome-hero-title" className="hero-title">
+          <h1 id="welcome-hero-title" className="hero-title" tabIndex={-1}>
             Найдите свою <br />
             недвижимость
           </h1>
@@ -1064,11 +1201,10 @@ function App({ webApp: initialWebApp }: AppProps) {
       ) : (
         /* Screen 2: Request Form */
         <section
-          ref={formScreenRef}
+          id={SCREEN_CONTENT_ID}
+          tabIndex={-1}
           className={`form-screen ${isKeyboardOpen ? "keyboard-open" : ""}`}
-          style={{
-            ["--keyboard-height" as string]: `${keyboardHeight}px`,
-          }}
+          style={{ "--keyboard-height": `${keyboardHeight}px` } as CSSProperties}
           aria-labelledby="form-heading-title"
         >
           <div className="form-header-block">
@@ -1079,7 +1215,7 @@ function App({ webApp: initialWebApp }: AppProps) {
                 <Home className="app-icon app-icon--lg" strokeWidth={1.9} />
               )}
             </div>
-            <h1 id="form-heading-title" className="form-title">
+            <h1 id="form-heading-title" className="form-title" tabIndex={-1}>
               {direction === "demand" ? "Ищу недвижимость" : "Предлагаю недвижимость"}
             </h1>
             <p className="form-subtitle">
@@ -1109,57 +1245,52 @@ function App({ webApp: initialWebApp }: AppProps) {
                 name="text"
                 value={text}
                 onChange={handleTextChange}
-                onFocus={() => {
-                  setTimeout(syncKeyboardState, 50);
-                  scrollToSubmitButton();
-                }}
-                onBlur={() => {
-                  setTimeout(() => {
-                    if (
-                      document.activeElement !== textareaRef.current &&
-                      document.activeElement !== submitButtonRef.current
-                    ) {
-                      setIsKeyboardOpen(false);
-                      setKeyboardHeight(0);
-                    }
-                  }, 200);
-                }}
+                onFocus={handleTextareaFocus}
+                onBlur={handleTextareaBlur}
                 placeholder={
                   direction === "demand"
                     ? "Например:\nИщу квартиру 1+1 в Батуми до $500 в месяц."
                     : "Например:\nСдаю квартиру 1+1 в Батуми за $700 в месяц, светлая, с балконом."
                 }
-                rows={isKeyboardOpen ? 4 : 5}
+                rows={5}
                 aria-required="true"
                 aria-invalid={Boolean(error)}
                 aria-describedby={error ? "form-error-msg text-counters" : "text-counters"}
                 readOnly={screen === "submitting"}
               />
 
-              <div
-                id="text-counters"
-                className="textarea-counters-row"
-                aria-live="polite"
-                aria-atomic="true"
-              >
-                <span id="text-count" aria-label={`Символов: ${countUnicodeCharacters(text)} из ${MAX_TEXT_LENGTH}`}>
-                  {countUnicodeCharacters(text)} / {MAX_TEXT_LENGTH}
+              {/* Not a live region: it would be re-announced on every keystroke. The text is read once,
+                  as the textarea's description. aria-label on a plain <span> is ignored, hence the hidden text. */}
+              <div id="text-counters" className="textarea-counters-row">
+                <span id="text-count">
+                  <span aria-hidden="true">
+                    {charCount} / {MAX_TEXT_LENGTH}
+                  </span>
+                  <span className="visually-hidden">
+                    Символов: {charCount} из {MAX_TEXT_LENGTH}.
+                  </span>
                 </span>
-                <span id="text-tags" aria-label={`Распознано ключевых параметров: ${countTags(text)} из 100`}>
-                  {countTags(text)} / 100
+                <span id="text-tags">
+                  <span aria-hidden="true">{tagCount} / 100</span>
+                  <span className="visually-hidden">
+                    Распознано ключевых параметров: {tagCount} из 100.
+                  </span>
                 </span>
               </div>
+              <p className="textarea-limit-note" role="status">
+                {textTruncated ? `Текст сокращён до ${MAX_TEXT_LENGTH} символов.` : ""}
+              </p>
             </div>
 
             {error && (
-              <p id="form-error-msg" className="form-error-text" role="alert" aria-live="assertive">
+              <p id="form-error-msg" className="form-error-text" role="alert">
                 {error}
               </p>
             )}
 
             {/* Inline subscription banner (replaces modal popup) */}
             {subscriptionRequired && (
-              <div className="subscription-inline-banner" role="alert" aria-live="polite">
+              <div className="subscription-inline-banner" role="alert">
                 <div className="subscription-banner-header">
                   <Bell className="app-icon app-icon--sm subscription-banner-icon" />
                   <span className="subscription-banner-title">
@@ -1169,7 +1300,9 @@ function App({ webApp: initialWebApp }: AppProps) {
 
                 {isFromChannel ? (
                   <div className="subscription-banner-hint" role="note">
-                    <ChevronDown className="app-icon app-icon--sm subscription-hint-arrow" />
+                    <div className="subscription-hint-arrow-wrap" aria-hidden="true">
+                      <ChevronDown className="app-icon app-icon--sm subscription-hint-arrow" />
+                    </div>
                     <span>
                       Свернуть и нажать <strong>«Подписаться»</strong> внизу канала.
                       После подписки вернитесь сюда — заявка отправится автоматически.
@@ -1187,7 +1320,7 @@ function App({ webApp: initialWebApp }: AppProps) {
                 )}
 
                 {subscriptionCheckFailed && (
-                  <div className="subscription-banner-warning" role="alert" aria-live="assertive">
+                  <div className="subscription-banner-warning">
                     <AlertCircle className="app-icon app-icon--sm subscription-warning-icon" />
                     <span>
                       Подписка пока не найдена. Убедитесь, что вы нажали «Подписаться» в канале, и попробуйте снова.
@@ -1200,9 +1333,9 @@ function App({ webApp: initialWebApp }: AppProps) {
             <button
               ref={submitButtonRef}
               className="pill-cta-btn"
-              type={subscriptionRequired ? "button" : "submit"}
-              disabled={screen === "submitting" || isCheckingSubscription}
-              aria-busy={screen === "submitting" || isCheckingSubscription}
+              type="button"
+              aria-disabled={isSubmitBusy}
+              aria-busy={isSubmitBusy}
               aria-label={
                 isCheckingSubscription
                   ? "Проверяем подписку…"
@@ -1212,21 +1345,7 @@ function App({ webApp: initialWebApp }: AppProps) {
                   ? "Я подписался, отправить"
                   : "Продолжить"
               }
-              onPointerDown={(e) => {
-                if (screen !== "submitting" && !isCheckingSubscription) {
-                  e.preventDefault();
-                  if (subscriptionRequired) {
-                    void handleVerifyAndSubmit();
-                  } else {
-                    void submitForm();
-                  }
-                }
-              }}
-              onClick={
-                subscriptionRequired
-                  ? () => void handleVerifyAndSubmit()
-                  : undefined
-              }
+              onClick={handleSubmitButtonPress}
             >
               {isCheckingSubscription ? (
                 "Проверяем подписку…"
