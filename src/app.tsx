@@ -799,9 +799,25 @@ function App({ webApp: initialWebApp }: AppProps) {
     }
 
     setScreen("direction");
+    resetDraft();
+  }
+
+  // Forget the application that was just sent. Without this the submitted text (and its
+  // idempotency key) would come back if the user starts a new application with the same role.
+  function resetDraft() {
     setDirection(null);
     setText("");
+    setTextTruncated(false);
     setError(null);
+    setSubscriptionRequired(false);
+    setSubscriptionCheckFailed(false);
+    setRetryNeedsNewIdempotencyKey(false);
+    setIdempotencyKey(createIdempotencyKey());
+  }
+
+  function openAccountFromSuccess() {
+    resetDraft();
+    openAccount();
   }
 
   // =========================================================
@@ -841,14 +857,19 @@ function App({ webApp: initialWebApp }: AppProps) {
             </div>
           </div>
 
-          <button
-            className="pill-cta-btn"
-            type="button"
-            onClick={closeApp}
-            aria-label="Закрыть приложение"
-          >
-            Закрыть
-          </button>
+          <div className="success-actions-group">
+            <button className="pill-cta-btn" type="button" onClick={openAccountFromSuccess}>
+              Мои заявки <ArrowRight className="app-icon app-icon--sm btn-arrow" />
+            </button>
+            <button
+              className="secondary-pill-btn"
+              type="button"
+              onClick={closeApp}
+              aria-label="Закрыть приложение"
+            >
+              Закрыть
+            </button>
+          </div>
         </section>
       </main>
     );

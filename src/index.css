@@ -1037,6 +1037,15 @@ h1[tabindex="-1"]:focus {
   margin: 0 auto 32px;
 }
 
+/* Success screen: primary + secondary action. No `margin-top: auto` here (unlike the error
+   screen): the skyline block above already takes the free space. */
+.success-actions-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
 .error-actions-group {
   display: flex;
   flex-direction: column;
