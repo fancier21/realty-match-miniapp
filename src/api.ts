@@ -26,6 +26,11 @@ export type ApiErrorKind =
   | "text_too_short"
   | "text_too_long"
   | "text_required"
+  | "links_not_allowed"
+  | "too_many_leads"
+  | "active_limit_reached"
+  | "daily_limit_exceeded"
+  | "duplicate_submission"
   | "idempotency_conflict"
   | "expired_session"
   | "invalid_session"
@@ -135,6 +140,26 @@ export async function submitPublishRequest(
       throw new ApiError("text_required", code, response.status);
     }
 
+    if (code === "LINKS_NOT_ALLOWED") {
+      throw new ApiError("links_not_allowed", code, response.status);
+    }
+
+    if (code === "TOO_MANY_LEADS") {
+      throw new ApiError("too_many_leads", code, response.status);
+    }
+
+    if (code === "ACTIVE_LIMIT_REACHED") {
+      throw new ApiError("active_limit_reached", code, response.status);
+    }
+
+    if (code === "DAILY_LIMIT_EXCEEDED") {
+      throw new ApiError("daily_limit_exceeded", code, response.status);
+    }
+
+    if (code === "DUPLICATE_SUBMISSION") {
+      throw new ApiError("duplicate_submission", code, response.status);
+    }
+
     if (code === "EXPIRED_INIT_DATA") {
       throw new ApiError("expired_session", code, response.status);
     }
@@ -201,6 +226,16 @@ export function getUserFacingApiError(error: unknown): string {
         return "Заявка превышает максимальную длину (до 4000 символов).";
       case "text_required":
         return "Пожалуйста, опишите вашу заявку.";
+      case "links_not_allowed":
+        return "Ссылки в заявке нельзя. Уберите их и укажите контакт в виде @username.";
+      case "too_many_leads":
+        return "В одном тексте слишком много запросов. Оставьте самое главное или разделите на несколько заявок.";
+      case "active_limit_reached":
+        return "У вас уже максимальное число активных заявок. Снимите одну из них в «Мои заявки» или дождитесь окончания срока.";
+      case "daily_limit_exceeded":
+        return "Достигнут суточный лимит заявок. Попробуйте завтра.";
+      case "duplicate_submission":
+        return "Такая заявка у вас уже опубликована. Измените текст или снимите прежнюю заявку.";
       case "idempotency_conflict":
         return "Эта заявка уже была отправлена с другим текстом. Нажмите «Изменить заявку».";
       case "expired_session":
@@ -239,6 +274,10 @@ export interface ApplicationLead {
   room_count: number | null;
   budget_min: number | null;
   budget_max: number | null;
+  area_min_sqm?: number | null;
+  area_max_sqm?: number | null;
+  floor_min?: number | null;
+  floor_max?: number | null;
   currency: string;
   client_intent: string;
   status?: string;

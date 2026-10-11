@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./app";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { initializeTelegramWebApp } from "./telegram";
 import "./index.css";
 
@@ -13,6 +14,8 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App webApp={webApp} />
+    <ErrorBoundary webApp={webApp}>
+      <App webApp={webApp} />
+    </ErrorBoundary>
   </StrictMode>,
 );

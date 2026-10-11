@@ -24,6 +24,11 @@ test("getUserFacingApiError formats all ApiError kinds properly", () => {
   assert.match(getUserFacingApiError(new ApiError("text_too_short")), /минимум 10 символов/);
   assert.match(getUserFacingApiError(new ApiError("text_too_long")), /до 4000 символов/);
   assert.match(getUserFacingApiError(new ApiError("text_required")), /Пожалуйста, опишите вашу заявку/);
+  assert.match(getUserFacingApiError(new ApiError("links_not_allowed")), /Ссылки в заявке нельзя/);
+  assert.match(getUserFacingApiError(new ApiError("too_many_leads")), /слишком много запросов/);
+  assert.match(getUserFacingApiError(new ApiError("active_limit_reached")), /максимальное число активных заявок/);
+  assert.match(getUserFacingApiError(new ApiError("daily_limit_exceeded")), /суточный лимит/);
+  assert.match(getUserFacingApiError(new ApiError("duplicate_submission")), /уже опубликована/);
   assert.match(getUserFacingApiError(new ApiError("idempotency_conflict")), /другим текстом/);
   assert.match(getUserFacingApiError(new ApiError("expired_session")), /Сессия Telegram устарела/);
   assert.match(getUserFacingApiError(new ApiError("invalid_session")), /Ошибка авторизации Telegram/);
